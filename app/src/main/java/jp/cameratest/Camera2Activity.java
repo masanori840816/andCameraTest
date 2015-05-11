@@ -9,7 +9,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-
 import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.Context;
@@ -48,7 +47,6 @@ import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
 
-
 public class Camera2Activity extends Activity {
 
     private Size mPreviewSize;
@@ -57,7 +55,6 @@ public class Camera2Activity extends Activity {
     private CameraDevice mCameraDevice;
     private CaptureRequest.Builder mPreviewBuilder;
     private CameraCaptureSession mPreviewSession;
-
     private Button mBtnTakingPhoto;
 
     private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
@@ -233,15 +230,16 @@ public class Camera2Activity extends Activity {
             int height = 480;
 
             if (characteristics != null) {
+                // デバイスがサポートしているストリーム設定からJpgの出力サイズを取得する.
                 jpegSizes = characteristics
-                        .get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-                        .getOutputSizes(ImageFormat.JPEG);
+                        .get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP).getOutputSizes(ImageFormat.JPEG);
                 if (jpegSizes != null && 0 < jpegSizes.length) {
                     width = jpegSizes[0].getWidth();
                     height = jpegSizes[0].getHeight();
                 }
             }
 
+            // 画像を取得するためのImageReaderの作成.
             ImageReader reader = ImageReader.newInstance(width, height, ImageFormat.JPEG, 1);
             List<Surface> outputSurfaces = new ArrayList<Surface>(2);
             outputSurfaces.add(reader.getSurface());
@@ -251,27 +249,31 @@ public class Camera2Activity extends Activity {
             captureBuilder.addTarget(reader.getSurface());
             captureBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
 
-            // Orientation
+            // 画像を調整する.
             int rotation = getWindowManager().getDefaultDisplay().getRotation();
             captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, ORIENTATIONS.get(rotation));
 
+            // ファイルの保存先のディレクトリとファイル名.
             String strSaveDir = Environment.getExternalStorageDirectory().toString();
-            String strSaveFileName = "pic.jpg";
+            String strSaveFileName = "pic_" + System.currentTimeMillis() +".jpg";
 
             final File file = new File(strSaveDir, strSaveFileName);
 
+            // 別スレッドで画像の保存処理を実行.
             ImageReader.OnImageAvailableListener readerListener = new ImageReader.OnImageAvailableListener() {
-
                 @Override
                 public void onImageAvailable(ImageReader reader) {
-
                     Image image = null;
                     try {
                         image = reader.acquireLatestImage();
+
+                        // TODO: Fragmentで取得した画像を表示.保存ボタンが押されたら画像の保存を実行する.
+
                         ByteBuffer buffer = image.getPlanes()[0].getBuffer();
                         byte[] bytes = new byte[buffer.capacity()];
                         buffer.get(bytes);
-                        save(bytes);
+                        saveImage(bytes);
+
                     } catch (FileNotFoundException e) {
                         e.printStackTrace();
                     } catch (IOException e) {
@@ -282,10 +284,10 @@ public class Camera2Activity extends Activity {
                         }
                     }
                 }
-
-                private void save(byte[] bytes) throws IOException {
+                private void saveImage(byte[] bytes) throws IOException {
                     OutputStream output = null;
                     try {
+                        // 生成した画像を出力する.
                         output = new FileOutputStream(file);
                         output.write(bytes);
                     } finally {
@@ -294,9 +296,8 @@ public class Camera2Activity extends Activity {
                         }
                     }
                 }
-
             };
-
+            // 別スレッドで実行.
             HandlerThread thread = new HandlerThread("CameraPicture");
             thread.start();
             final Handler backgroudHandler = new Handler(thread.getLooper());
@@ -307,19 +308,17 @@ public class Camera2Activity extends Activity {
                 @Override
                 public void onCaptureCompleted(CameraCaptureSession session,
                                                CaptureRequest request, TotalCaptureResult result) {
-
+                    // 画像の保存が終わったらToast表示.
                     super.onCaptureCompleted(session, request, result);
                     Toast.makeText(Camera2Activity.this, "Saved:"+file, Toast.LENGTH_SHORT).show();
+                    // もう一度カメラのプレビュー表示を開始する.
                     createCameraPreviewSession();
                 }
 
             };
-
             mCameraDevice.createCaptureSession(outputSurfaces, new CameraCaptureSession.StateCallback() {
-
                 @Override
                 public void onConfigured(CameraCaptureSession session) {
-
                     try {
                         session.capture(captureBuilder.build(), captureListener, backgroudHandler);
                     } catch (CameraAccessException e) {
@@ -327,13 +326,12 @@ public class Camera2Activity extends Activity {
                         e.printStackTrace();
                     }
                 }
-
                 @Override
                 public void onConfigureFailed(CameraCaptureSession session) {
 
                 }
             }, backgroudHandler);
-
+            // 保存した画像を反映させる.
             String[] paths = {strSaveDir + "/" + strSaveFileName};
             String[] mimeTypes = {"image/jpeg"};
             MediaScannerConnection.scanFile(
@@ -345,7 +343,6 @@ public class Camera2Activity extends Activity {
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
-
     }
     private MediaScannerConnection.OnScanCompletedListener mScanSavedFileCompleted = new MediaScannerConnection.OnScanCompletedListener(){
         @Override
@@ -379,6 +376,7 @@ public class Camera2Activity extends Activity {
     @TargetApi(21)
     private void configureTransform()
     {
+        // 画面の回転に合わせてmTextureViewの向き、サイズを変更する.
         if (null == mTextureView || null == mPreviewSize)
         {
             return;
