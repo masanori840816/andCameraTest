@@ -24,11 +24,6 @@
             </intent-filter>
         </activity>
         <activity
-            android:name=".Camera2Activity"
-            android:label="@string/title_activity_camera2"
-            android:configChanges="orientation|screenSize">
-        </activity>
-        <activity
             android:name=".CameraActivity"
             android:label="@string/title_activity_camera"
             android:configChanges="orientation|screenSize">

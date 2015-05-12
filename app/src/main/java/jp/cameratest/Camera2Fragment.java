@@ -1,41 +1,13 @@
 package jp.cameratest;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.Context;
 import android.content.res.Configuration;
+import android.graphics.ImageFormat;
 import android.graphics.Matrix;
 import android.graphics.Point;
 import android.graphics.RectF;
-import android.media.Image;
-import android.media.ImageReader;
-import android.media.MediaScannerConnection;
-import android.net.Uri;
-import android.os.Bundle;
-import android.os.Environment;
-import android.os.Handler;
-import android.os.HandlerThread;
-import android.os.StrictMode;
-import android.util.Log;
-import android.util.Size;
-import android.util.SparseIntArray;
-import android.view.Display;
-import android.view.Surface;
-import android.view.TextureView;
-import android.view.View;
-import android.view.WindowManager;
-import android.widget.Button;
-import android.widget.Toast;
-import android.graphics.ImageFormat;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -46,9 +18,40 @@ import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.Image;
+import android.media.ImageReader;
+import android.media.MediaScannerConnection;
+import android.net.Uri;
+import android.os.Bundle;
+import android.app.Fragment;
+import android.os.Environment;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.util.Log;
+import android.util.Size;
+import android.util.SparseIntArray;
+import android.view.Display;
+import android.view.LayoutInflater;
+import android.view.Surface;
+import android.view.TextureView;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.RelativeLayout;
+import android.widget.Toast;
 
-public class Camera2Activity extends Activity {
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
+
+public class Camera2Fragment extends Fragment {
     private Size mPreviewSize;
 
     private TextureView mTextureView;
@@ -64,26 +67,24 @@ public class Camera2Activity extends Activity {
         ORIENTATIONS.append(Surface.ROTATION_180, 270);
         ORIENTATIONS.append(Surface.ROTATION_270, 180);
     }
+
+    private OnFragmentInteractionListener mListener;
+
+    public static Camera2Fragment newInstance(String param1, String param2) {
+        Camera2Fragment fragment = new Camera2Fragment();
+        Bundle args = new Bundle();
+
+        fragment.setArguments(args);
+        return fragment;
+    }
+
+    public Camera2Fragment() {
+        // Required empty public constructor
+    }
+
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder()
-                .detectAll()
-                .penaltyLog()
-                .build();
-        StrictMode.setThreadPolicy(policy);
-
-        // Activityのタイトルを非表示にする(フルスクリーンなら不要？).
-        //requestWindowFeature(Window.FEATURE_NO_TITLE);
-        // フルスクリーン表示.
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        setContentView(R.layout.activity_camera);
-        mTextureView = (TextureView)findViewById(R.id.camera2_view);
-        mTextureView.setSurfaceTextureListener(mCameraViewStatusChanged);
-
-        mBtnTakingPhoto = (Button)findViewById(R.id.btn_taking_photo);
-        mBtnTakingPhoto.setOnClickListener(mBtnShotClicked);
     }
     private final TextureView.SurfaceTextureListener mCameraViewStatusChanged = new TextureView.SurfaceTextureListener(){
         @Override
@@ -100,18 +101,70 @@ public class Camera2Activity extends Activity {
         @Override
         public void onSurfaceTextureUpdated(SurfaceTexture surface) { }
     };
-    private final View.OnClickListener mBtnShotClicked = new View.OnClickListener(){
+    @Override
+    public View onCreateView(LayoutInflater inflater, ViewGroup container,
+                             Bundle savedInstanceState) {
+        // ビューにカメラプレビュー用のTextureView、ボタンを追加する.
+        RelativeLayout rllLayout = new RelativeLayout(getActivity());
+        rllLayout.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+
+        mTextureView = new TextureView(getActivity());
+        mTextureView.setSurfaceTextureListener(mCameraViewStatusChanged);
+        rllLayout.addView(mTextureView);
+
+        mBtnTakingPhoto = new Button(getActivity());
+        mBtnTakingPhoto.setText(R.string.btn_taking_photo);
+
+        mBtnTakingPhoto.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        mBtnTakingPhoto.setOnClickListener(mBtnShotClicked);
+
+        rllLayout.addView(mBtnTakingPhoto);
+
+        return rllLayout;
+    }
+    private final View.OnClickListener mBtnShotClicked = new View.OnClickListener() {
         @Override
         public void onClick(View v) {
             takePicture();
         }
     };
+
+    @Override
+    public void onAttach(Activity activity) {
+        super.onAttach(activity);
+        try {
+            mListener = (OnFragmentInteractionListener) activity;
+        } catch (ClassCastException e) {
+            throw new ClassCastException(activity.toString()
+                    + " must implement OnFragmentInteractionListener");
+        }
+    }
+
+    @Override
+    public void onDetach() {
+        super.onDetach();
+        mListener = null;
+    }
+    public interface OnFragmentInteractionListener {
+        // TODO: Update argument type and name
+        public void onFragmentInteraction(Uri uri);
+    }
+    @TargetApi(21)
+    @Override
+    public void onPause() {
+        super.onPause();
+        if (null != mCameraDevice) {
+            mCameraDevice.close();
+            mCameraDevice = null;
+        }
+    }
     @TargetApi(21)
     private void prepareCameraView() {
-        Log.d("CameraView", "Init");
 
         // Camera機能にアクセスするためのCameraManagerの取得.
-        CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+        CameraManager manager = (CameraManager) getActivity().getSystemService(Context.CAMERA_SERVICE);
         try {
             // Back Cameraを取得してOpen.
             for (String strCameraId : manager.getCameraIdList()) {
@@ -156,7 +209,6 @@ public class Camera2Activity extends Activity {
     }
     @TargetApi(21)
     protected void createCameraPreviewSession() {
-        Log.d("CameraView", "CreateSession");
 
         if(null == mCameraDevice || !mTextureView.isAvailable() || null == mPreviewSize) {
             return;
@@ -189,7 +241,7 @@ public class Camera2Activity extends Activity {
                 @Override
                 public void onConfigureFailed(CameraCaptureSession session) {
 
-                    Toast.makeText(Camera2Activity.this, "onConfigureFailed", Toast.LENGTH_LONG).show();
+                    Toast.makeText(getActivity(), "onConfigureFailed", Toast.LENGTH_LONG).show();
                 }
             }, null);
         } catch (CameraAccessException e) {
@@ -221,7 +273,7 @@ public class Camera2Activity extends Activity {
         if(null == mCameraDevice) {
             return;
         }
-        CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+        CameraManager manager = (CameraManager) getActivity().getSystemService(Context.CAMERA_SERVICE);
         try {
             CameraCharacteristics characteristics = manager.getCameraCharacteristics(mCameraDevice.getId());
 
@@ -250,7 +302,7 @@ public class Camera2Activity extends Activity {
             captureBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
 
             // 画像を調整する.
-            int rotation = getWindowManager().getDefaultDisplay().getRotation();
+            int rotation = getActivity().getWindowManager().getDefaultDisplay().getRotation();
             captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, ORIENTATIONS.get(rotation));
 
             // ファイルの保存先のディレクトリとファイル名.
@@ -310,7 +362,7 @@ public class Camera2Activity extends Activity {
                                                CaptureRequest request, TotalCaptureResult result) {
                     // 画像の保存が終わったらToast表示.
                     super.onCaptureCompleted(session, request, result);
-                    Toast.makeText(Camera2Activity.this, "Saved:"+file, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getActivity(), "Saved:"+file, Toast.LENGTH_SHORT).show();
                     // もう一度カメラのプレビュー表示を開始する.
                     createCameraPreviewSession();
                 }
@@ -335,7 +387,7 @@ public class Camera2Activity extends Activity {
             String[] paths = {strSaveDir + "/" + strSaveFileName};
             String[] mimeTypes = {"image/jpeg"};
             MediaScannerConnection.scanFile(
-                    getApplicationContext(),
+                    getActivity().getApplicationContext(),
                     paths,
                     mimeTypes,
                     mScanSavedFileCompleted);
@@ -347,27 +399,14 @@ public class Camera2Activity extends Activity {
     private MediaScannerConnection.OnScanCompletedListener mScanSavedFileCompleted = new MediaScannerConnection.OnScanCompletedListener(){
         @Override
         public void onScanCompleted(String path,
-                Uri uri){
+                                    Uri uri){
             // このタイミングでToastを表示する?
         }
     };
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-    }
-    @TargetApi(21)
-    @Override
-    protected void onPause() {
-        super.onPause();
-        if (null != mCameraDevice) {
-            mCameraDevice.close();
-            mCameraDevice = null;
-        }
-    }
     @TargetApi(21)
     public void onConfigurationChanged(Configuration newConfig)
     {
+        Log.d("cmrFragment", "onConfigurationChanged");
         // 画面の回転・サイズ変更でプレビュー画像の向きを変更する.
         super.onConfigurationChanged(newConfig);
 
@@ -381,7 +420,7 @@ public class Camera2Activity extends Activity {
         {
             return;
         }
-        Display dsply = getWindowManager().getDefaultDisplay();
+        Display dsply = getActivity().getWindowManager().getDefaultDisplay();
 
         int rotation = dsply.getRotation();
         Matrix matrix = new Matrix();
