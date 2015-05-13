@@ -31,6 +31,7 @@ import android.util.Log;
 import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.Display;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.Surface;
 import android.view.TextureView;
@@ -119,6 +120,7 @@ public class Camera2Fragment extends Fragment {
         mBtnTakingPhoto.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
         mBtnTakingPhoto.setOnClickListener(mBtnShotClicked);
+        mBtnTakingPhoto.setGravity(Gravity.BOTTOM);
 
         rllLayout.addView(mBtnTakingPhoto);
 
