@@ -15,9 +15,6 @@ import android.view.WindowManager;
 import android.widget.Button;
 
 public class MainActivity extends Activity implements Camera2Fragment.OnFragmentInteractionListener {
-
-    private final static int SDKVER_LOLLIPOP = 21;
-
     private Button mBtnStart;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,17 +32,14 @@ public class MainActivity extends Activity implements Camera2Fragment.OnFragment
         setContentView(R.layout.activity_main);
 
         mBtnStart = (Button) findViewById(R.id.btn_start);
-        mBtnStart.setOnClickListener(mBtnStartClicked);
-    }
-    private final View.OnClickListener mBtnStartClicked = new View.OnClickListener(){
-        @Override
-        public void onClick(View v) {
-            if (Build.VERSION.SDK_INT >= SDKVER_LOLLIPOP)
-            {
+        mBtnStart.setOnClickListener(
+            (View v) -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP){
+
                 // Camera2を使ったFragmentを開く.
                 FragmentManager fm = getFragmentManager();
                 FragmentTransaction ft = fm.beginTransaction()
-                    .addToBackStack(null);
+                        .addToBackStack(null);
                 Camera2Fragment frgCamera = new Camera2Fragment();
                 ft.setTransition(FragmentTransaction.TRANSIT_FRAGMENT_OPEN);
                 ft.add(R.id.layout_main_root, frgCamera, "ViewPhoto");
@@ -55,16 +49,14 @@ public class MainActivity extends Activity implements Camera2Fragment.OnFragment
                 ft.commit();
                 // Activityのボタンは非表示にする.
                 mBtnStart.setVisibility(View.GONE);
-            }
-            else
-            {
+            } else {
                 // TODO:Cameraを使ったActivityを開く.
                 Intent ittMainView_Camera = new Intent(MainActivity.this, CameraActivity.class);
                 // 次画面のアクティビティ起動
                 startActivity(ittMainView_Camera);
             }
-        }
-    };
+        });
+    }
     @Override
     protected void onResume() {
         super.onResume();
@@ -81,13 +73,11 @@ public class MainActivity extends Activity implements Camera2Fragment.OnFragment
     public void onBackPressed() {
         // TODO: Fragment表示中は該当Fragmentを閉じる.
         if (getFragmentManager().getBackStackEntryCount() != 0) {
-
             getFragmentManager().popBackStack(); // BackStackに乗っているFragmentを戻す
             // Activityのボタンを再表示する.
             mBtnStart.setVisibility(View.VISIBLE);
         }
-        else
-        {
+        else{
             super.onBackPressed();
         }
     }
