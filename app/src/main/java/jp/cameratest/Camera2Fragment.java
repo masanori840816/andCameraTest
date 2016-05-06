@@ -59,7 +59,6 @@ public class Camera2Fragment extends Fragment {
     private CameraDevice mCameraDevice;
     private CaptureRequest.Builder mPreviewBuilder;
     private CameraCaptureSession mPreviewSession;
-    private Button mBtnTakingPhoto;
 
     private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
     static {
@@ -114,24 +113,22 @@ public class Camera2Fragment extends Fragment {
         mTextureView.setSurfaceTextureListener(mCameraViewStatusChanged);
         rllLayout.addView(mTextureView);
 
-        mBtnTakingPhoto = new Button(getActivity());
-        mBtnTakingPhoto.setText(R.string.btn_taking_photo);
+        Button btnTakingPhoto = new Button(getActivity());
+        btnTakingPhoto.setText(R.string.btn_taking_photo);
 
-        mBtnTakingPhoto.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+        btnTakingPhoto.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
-        mBtnTakingPhoto.setOnClickListener(mBtnShotClicked);
-        mBtnTakingPhoto.setGravity(Gravity.BOTTOM);
+        btnTakingPhoto.setOnClickListener(
+                (View v) ->{
+                    takePicture();
+                }
+        );
+        btnTakingPhoto.setGravity(Gravity.BOTTOM);
 
-        rllLayout.addView(mBtnTakingPhoto);
+        rllLayout.addView(btnTakingPhoto);
 
         return rllLayout;
     }
-    private final View.OnClickListener mBtnShotClicked = new View.OnClickListener() {
-        @Override
-        public void onClick(View v) {
-            takePicture();
-        }
-    };
 
     @Override
     public void onAttach(Activity activity) {
@@ -183,27 +180,30 @@ public class Camera2Fragment extends Fragment {
 
                 // プレビュー画面のサイズ調整.
                 this.configureTransform();
+                try {
+                    manager.openCamera(strCameraId, new CameraDevice.StateCallback() {
+                        @Override
+                        public void onOpened(CameraDevice camera) {
+                            mCameraDevice = camera;
+                            createCameraPreviewSession();
+                        }
 
-                manager.openCamera(strCameraId, new CameraDevice.StateCallback() {
-                    @Override
-                    public void onOpened(CameraDevice camera) {
-                        mCameraDevice = camera;
-                        createCameraPreviewSession();
-                    }
+                        @Override
+                        public void onDisconnected(CameraDevice cmdCamera) {
+                            cmdCamera.close();
+                            mCameraDevice = null;
+                        }
 
-                    @Override
-                    public void onDisconnected(CameraDevice cmdCamera) {
-                        cmdCamera.close();
-                        mCameraDevice = null;
-                    }
-
-                    @Override
-                    public void onError(CameraDevice cmdCamera, int error) {
-                        cmdCamera.close();
-                        mCameraDevice = null;
-                        Log.e("CameraView", "onError");
-                    }
-                }, null);
+                        @Override
+                        public void onError(CameraDevice cmdCamera, int error) {
+                            cmdCamera.close();
+                            mCameraDevice = null;
+                            Log.e("CameraView", "onError");
+                        }
+                    }, null);
+                }catch (SecurityException se){
+                    se.printStackTrace();
+                }
             }
         } catch (CameraAccessException e) {
             e.printStackTrace();
