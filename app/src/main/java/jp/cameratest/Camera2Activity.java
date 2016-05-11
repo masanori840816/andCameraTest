@@ -15,34 +15,29 @@ import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
-import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.MediaScannerConnection;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.util.Size;
 import android.util.SparseIntArray;
-import android.view.Display;
-import android.view.Gravity;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
-import android.widget.RelativeLayout;
 import android.widget.Toast;
 
 import java.io.File;
@@ -51,9 +46,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 
 public class Camera2Activity extends AppCompatActivity {
     private final static int REQUEST_PERMISSION_CAMERA = 1;
@@ -63,6 +56,10 @@ public class Camera2Activity extends AppCompatActivity {
     private CameraDevice cameraDevice;
     private CaptureRequest.Builder previewBuilder;
     private CameraCaptureSession previewSession;
+    private ImageReader imgReader;
+    private HandlerThread backgroundThread;
+    private Handler backgroundHandler;
+    private boolean isFlashlightSupported;
 
     private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
     static {
@@ -90,17 +87,32 @@ public class Camera2Activity extends AppCompatActivity {
             initCameraView();
         }
     }
+    @Override
+    public void onResume(){
+        super.onResume();
+        startBackgroundThread();
+    }
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     @Override
-    public void onDestroy(){
-        super.onDestroy();
+    public void onPause(){
+        if(previewSession != null){
+            previewSession.close();
+            previewSession = null;
+        }
         if(cameraDevice != null){
             cameraDevice.close();
             cameraDevice = null;
         }
+
+        stopBackgroundThread();
+
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        super.onPause();
     }
     @Override
-    public void onRequestPermissionsResult(int intRequestCode, String[] strPermissions, int[] intGrantResults) {
+    public void onRequestPermissionsResult(int intRequestCode
+            , @NonNull String[] strPermissions
+            , @NonNull int[] intGrantResults) {
         super.onRequestPermissionsResult(intRequestCode, strPermissions, intGrantResults);
         switch (intRequestCode){
             case REQUEST_PERMISSION_CAMERA:
@@ -141,11 +153,13 @@ public class Camera2Activity extends AppCompatActivity {
     }
     @TargetApi(Build.VERSION_CODES.M)
     private void requestStoragePermission(){
-        if(checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED){
+        if(checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+                && checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED){
             takePicture();
         }
         else{
-            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_PERMISSION_STORAGE);
+            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE}
+                    , REQUEST_PERMISSION_STORAGE);
         }
     }
     private void initCameraView(){
@@ -154,17 +168,17 @@ public class Camera2Activity extends AppCompatActivity {
         previewTextureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
             @Override
             public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
-                // Textureが有効化されたらカメラを初期化.
-                prepareCameraView();
+                // Textureが有効化されたらプレビューを表示.
+                openCamera(width, height);
             }
             @Override
             public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
+                configureTransform();
             }
             @Override
             public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
-                return false;
+                return true;
             }
-
             @Override
             public void onSurfaceTextureUpdated(SurfaceTexture surface) {
             }
@@ -190,8 +204,7 @@ public class Camera2Activity extends AppCompatActivity {
         }
     }
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-    private void prepareCameraView() {
-
+    private void openCamera(int width, int height) {
         // Camera機能にアクセスするためのCameraManagerの取得.
         CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
         try {
@@ -199,40 +212,111 @@ public class Camera2Activity extends AppCompatActivity {
             for (String strCameraId : manager.getCameraIdList()) {
                 // Cameraから情報を取得するためのCharacteristics.
                 CameraCharacteristics characteristics = manager.getCameraCharacteristics(strCameraId);
-                if (characteristics.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT) {
+                Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
+                if (facing == null
+                        || facing == CameraCharacteristics.LENS_FACING_FRONT) {
                     // Front Cameraならスキップ.
                     continue;
                 }
+                // 端末がFlashlightに対応しているか確認.
+                Boolean isAvailable = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                isFlashlightSupported = (isAvailable != null);
+
                 // ストリームの設定を取得(出力サイズを取得する).
                 StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-                // TODO: 配列から最大の組み合わせを取得する.
-                previewSize = map.getOutputSizes(SurfaceTexture.class)[0];
+                if(map != null){
+                    Size[] sizes = map.getOutputSizes(ImageFormat.JPEG);
+                    for(Size size : sizes){
+                        Log.d("Camera2Activity", "width:" + size.getWidth() + " height:" + size.getHeight());
+                    }
+                    // TODO: 配列から最大の組み合わせを取得する.
+                    previewSize = map.getOutputSizes(ImageFormat.JPEG)[0];
+                }
+// 画像を取得するためのImageReaderの作成.
+                //ImageReader reader = ImageReader.newInstance(previewSize.getWidth(), previewSize.getHeight(), ImageFormat.JPEG, 1);
+                // TODO: 正しい縦横比で出来るだけ大きなサイズの指定.
+                imgReader = ImageReader.newInstance(640, 480, ImageFormat.JPEG, 2);
+
+                imgReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
+                           @Override
+                           public void onImageAvailable(ImageReader reader) {
+                               Image image = null;
+                               try {
+                                   image = reader.acquireLatestImage();
+
+                                   // TODO: Fragmentで取得した画像を表示.保存ボタンが押されたら画像の保存を実行する.
+                                   ByteBuffer buffer = image.getPlanes()[0].getBuffer();
+                                   byte[] bytes = new byte[buffer.capacity()];
+                                   buffer.get(bytes);
+                                   saveImage(bytes);
+                               } catch (FileNotFoundException e) {
+                                   e.printStackTrace();
+                               } catch (IOException e) {
+                                   e.printStackTrace();
+                               } finally {
+                                   if (image != null) {
+                                       image.close();
+                                   }
+                               }
+                           }
+                           private void saveImage(byte[] bytes) throws IOException {
+                               OutputStream output = null;
+                               try {
+                                   // ファイルの保存先のディレクトリとファイル名.
+                                   String strSaveDir = Environment.getExternalStorageDirectory().toString() + "/DCIM";
+                                   String strSaveFileName = "pic_" + System.currentTimeMillis() +".jpg";
+
+                                   final File file = new File(strSaveDir, strSaveFileName);
+
+                                   // 生成した画像を出力する.
+                                   output = new FileOutputStream(file);
+                                   output.write(bytes);
+
+                                   // 保存した画像を反映させる.
+                                   String[] paths = {strSaveDir + "/" + strSaveFileName};
+                                   String[] mimeTypes = {"image/jpeg"};
+                                   MediaScannerConnection.scanFile(
+                                           getApplicationContext(),
+                                           paths,
+                                           mimeTypes,
+                                           null);
+                               } finally {
+                                   if (output != null) {
+                                       output.close();
+                                   }
+                               }
+                           }
+                       }
+                        , backgroundHandler);
 
                 // プレビュー画面のサイズ調整.
-                this.configureTransform();
+                configureTransform();
                 try {
                     manager.openCamera(strCameraId, new CameraDevice.StateCallback() {
                         @Override
-                        public void onOpened(CameraDevice camera) {
+                        public void onOpened(@NonNull CameraDevice camera) {
                             if(cameraDevice == null){
                                 cameraDevice = camera;
                             }
+                            runOnUiThread(
+                                    () -> {
+                                        // カメラ画面表示中はScreenをOffにしない.
+                                        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                                    });
                             createCameraPreviewSession();
                         }
-
                         @Override
-                        public void onDisconnected(CameraDevice cmdCamera) {
+                        public void onDisconnected(@NonNull CameraDevice cmdCamera) {
                             cmdCamera.close();
                             cameraDevice = null;
                         }
-
                         @Override
-                        public void onError(CameraDevice cmdCamera, int error) {
+                        public void onError(@NonNull CameraDevice cmdCamera, int error) {
                             cmdCamera.close();
                             cameraDevice = null;
                             Log.e("CameraView", "onError");
                         }
-                    }, null);
+                    }, backgroundHandler);
                 }catch (SecurityException se){
                     se.printStackTrace();
                 }
@@ -264,41 +348,31 @@ public class Camera2Activity extends AppCompatActivity {
         previewBuilder.addTarget(surface);
 
         try {
-            cameraDevice.createCaptureSession(Arrays.asList(surface), new CameraCaptureSession.StateCallback() {
+            cameraDevice.createCaptureSession(Arrays.asList(surface, imgReader.getSurface())
+                    , new CameraCaptureSession.StateCallback() {
+                        @Override
+                        public void onConfigured(@NonNull CameraCaptureSession session) {
+                            previewSession = session;
+                            if(cameraDevice == null) {
+                                return;
+                            }
+                            setCameraMode(previewBuilder);
 
-                @Override
-                public void onConfigured(CameraCaptureSession session) {
-                    previewSession = session;
-                    updatePreview();
-                }
+                            try {
+                                previewSession.setRepeatingRequest(previewBuilder.build(), null, backgroundHandler);
+                            } catch (CameraAccessException e) {
+                                e.printStackTrace();
+                            }
+                        }
 
-                @Override
-                public void onConfigureFailed(CameraCaptureSession session) {
+                        @Override
+                        public void onConfigureFailed(@NonNull CameraCaptureSession session) {
 
-                    Toast.makeText(getApplicationContext(), "onConfigureFailed", Toast.LENGTH_LONG).show();
-                }
-            }, null);
+                            Toast.makeText(getApplicationContext(), "onConfigureFailed", Toast.LENGTH_LONG).show();
+                        }
+            }, backgroundHandler);
         } catch (CameraAccessException e) {
 
-            e.printStackTrace();
-        }
-    }
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-    protected void updatePreview() {
-        if(null == cameraDevice) {
-            Log.e("CameraView", "updatePreview error, ");
-            return;
-        }
-        // オートフォーカスモードに設定する.
-        previewBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-        // 別スレッドで実行.
-        HandlerThread thread = new HandlerThread("CameraPreview");
-        thread.start();
-        Handler backgroundHandler = new Handler(thread.getLooper());
-
-        try {
-            previewSession.setRepeatingRequest(previewBuilder.build(), null, backgroundHandler);
-        } catch (CameraAccessException e) {
             e.printStackTrace();
         }
     }
@@ -307,124 +381,30 @@ public class Camera2Activity extends AppCompatActivity {
         if(cameraDevice == null) {
             return;
         }
-        CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
         try {
-            CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraDevice.getId());
-
-            Size[] jpegSizes = null;
-            int width = 640;
-            int height = 480;
-
-            // デバイスがサポートしているストリーム設定からJpgの出力サイズを取得する.
-            jpegSizes = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP).getOutputSizes(ImageFormat.JPEG);
-            if (jpegSizes != null && 0 < jpegSizes.length) {
-                width = jpegSizes[0].getWidth();
-                height = jpegSizes[0].getHeight();
-            }
-
-            // 画像を取得するためのImageReaderの作成.
-            ImageReader reader = ImageReader.newInstance(width, height, ImageFormat.JPEG, 1);
-            List<Surface> outputSurfaces = new ArrayList<Surface>(2);
-            outputSurfaces.add(reader.getSurface());
-            outputSurfaces.add(new Surface(previewTextureView.getSurfaceTexture()));
-
             final CaptureRequest.Builder captureBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
-            captureBuilder.addTarget(reader.getSurface());
-            captureBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
+            captureBuilder.addTarget(imgReader.getSurface());
+            setCameraMode(captureBuilder);
 
-            // 画像を調整する.
-            int rotation = getWindowManager().getDefaultDisplay().getRotation();
-            captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, ORIENTATIONS.get(rotation));
+            // TODO: 画像の回転を調整する.
+            captureBuilder.set(CaptureRequest.JPEG_ORIENTATION
+                    , ORIENTATIONS.get(getWindowManager().getDefaultDisplay().getRotation()));
 
-            // ファイルの保存先のディレクトリとファイル名.
-            String strSaveDir = Environment.getExternalStorageDirectory().toString();
-            String strSaveFileName = "pic_" + System.currentTimeMillis() +".jpg";
-
-            final File file = new File(strSaveDir, strSaveFileName);
-
-            // 別スレッドで画像の保存処理を実行.
-            ImageReader.OnImageAvailableListener readerListener = new ImageReader.OnImageAvailableListener() {
-                @Override
-                public void onImageAvailable(ImageReader reader) {
-                    Image image = null;
-                    try {
-                        image = reader.acquireLatestImage();
-
-                        // TODO: Fragmentで取得した画像を表示.保存ボタンが押されたら画像の保存を実行する.
-
-                        ByteBuffer buffer = image.getPlanes()[0].getBuffer();
-                        byte[] bytes = new byte[buffer.capacity()];
-                        buffer.get(bytes);
-                        saveImage(bytes);
-
-                    } catch (FileNotFoundException e) {
-                        e.printStackTrace();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    } finally {
-                        if (image != null) {
-                            image.close();
+            previewSession.stopRepeating();
+            previewSession.capture(captureBuilder.build()
+                    , new CameraCaptureSession.CaptureCallback() {
+                        @Override
+                        public void onCaptureCompleted(@NonNull CameraCaptureSession session
+                                , @NonNull CaptureRequest request
+                                , @NonNull TotalCaptureResult result) {
+                            // 画像の保存が終わったらToast表示.
+                            super.onCaptureCompleted(session, request, result);
+                            Toast.makeText(getApplicationContext(), "Saved", Toast.LENGTH_SHORT).show();
+                            // もう一度カメラのプレビュー表示を開始する.
+                            createCameraPreviewSession();
                         }
                     }
-                }
-                private void saveImage(byte[] bytes) throws IOException {
-                    OutputStream output = null;
-                    try {
-                        // 生成した画像を出力する.
-                        output = new FileOutputStream(file);
-                        output.write(bytes);
-                    } finally {
-                        if (null != output) {
-                            output.close();
-                        }
-                    }
-                }
-            };
-            // 別スレッドで実行.
-            HandlerThread thread = new HandlerThread("CameraPicture");
-            thread.start();
-            final Handler backgroudHandler = new Handler(thread.getLooper());
-            reader.setOnImageAvailableListener(readerListener, backgroudHandler);
-
-            final CameraCaptureSession.CaptureCallback captureListener = new CameraCaptureSession.CaptureCallback() {
-
-                @Override
-                public void onCaptureCompleted(CameraCaptureSession session,
-                                               CaptureRequest request, TotalCaptureResult result) {
-                    // 画像の保存が終わったらToast表示.
-                    super.onCaptureCompleted(session, request, result);
-                    Toast.makeText(getApplicationContext(), "Saved:"+file, Toast.LENGTH_SHORT).show();
-                    // もう一度カメラのプレビュー表示を開始する.
-                    createCameraPreviewSession();
-                }
-
-            };
-            cameraDevice.createCaptureSession(outputSurfaces, new CameraCaptureSession.StateCallback() {
-                @Override
-                public void onConfigured(CameraCaptureSession session) {
-                    try {
-                        session.capture(captureBuilder.build(), captureListener, backgroudHandler);
-                    } catch (CameraAccessException e) {
-
-                        e.printStackTrace();
-                    }
-                }
-                @Override
-                public void onConfigureFailed(CameraCaptureSession session) {
-
-                }
-            }, backgroudHandler);
-            // 保存した画像を反映させる.
-            String[] paths = {strSaveDir + "/" + strSaveFileName};
-            String[] mimeTypes = {"image/jpeg"};
-            MediaScannerConnection.scanFile(
-                    getApplicationContext(),
-                    paths,
-                    mimeTypes,
-                    (String path, Uri uri) -> {
-                        // TODO: Scan完了後にToast表示するか.
-                    });
-
+                    , null);
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
@@ -435,13 +415,10 @@ public class Camera2Activity extends AppCompatActivity {
         if (previewTextureView == null || previewSize == null){
             return;
         }
-        Display dsply = getWindowManager().getDefaultDisplay();
-
-        int rotation = dsply.getRotation();
         Matrix matrix = new Matrix();
 
         Point pntDisplay = new Point();
-        dsply.getSize(pntDisplay);
+        getWindowManager().getDefaultDisplay().getSize(pntDisplay);
 
         RectF rctView = new RectF(0, 0, pntDisplay.x, pntDisplay.y);
         RectF rctPreview = new RectF(0, 0, previewSize.getHeight(), previewSize.getWidth());
@@ -456,7 +433,7 @@ public class Camera2Activity extends AppCompatActivity {
         );
         matrix.postScale(scale, scale, centerX, centerY);
 
-        switch (rotation) {
+        switch (getWindowManager().getDefaultDisplay().getRotation()) {
             case Surface.ROTATION_0:
                 matrix.postRotate(0, centerX, centerY);
                 break;
@@ -471,5 +448,32 @@ public class Camera2Activity extends AppCompatActivity {
                 break;
         }
         previewTextureView.setTransform(matrix);
+    }
+    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+    private void setCameraMode(CaptureRequest.Builder requestBuilder){
+        // AutoFocus
+        requestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+        requestBuilder.set(CaptureRequest.CONTROL_EFFECT_MODE, CaptureRequest.CONTROL_EFFECT_MODE_MONO);
+
+        // 端末がFlashlightに対応していたら自動で使用されるように設定.
+        if(isFlashlightSupported){
+            requestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
+        }
+    }
+    private void startBackgroundThread() {
+        backgroundThread = new HandlerThread("CameraPreview");
+        backgroundThread.start();
+        backgroundHandler = new Handler(backgroundThread.getLooper());
+    }
+    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+    private void stopBackgroundThread(){
+        backgroundThread.quitSafely();
+        try{
+            backgroundThread.join();
+            backgroundThread = null;
+            backgroundHandler = null;
+        }catch (InterruptedException e){
+            e.printStackTrace();
+        }
     }
 }
