@@ -37,7 +37,6 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Button;
-import android.widget.LinearLayout;
 import android.widget.Toast;
 
 import com.annimon.stream.Optional;
@@ -50,7 +49,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.Comparator;
 
 public class Camera2Activity extends AppCompatActivity {
     private final static int REQUEST_PERMISSION_CAMERA = 1;
@@ -62,6 +60,7 @@ public class Camera2Activity extends AppCompatActivity {
     private CameraDevice cameraDevice;
     private CaptureRequest.Builder previewBuilder;
     private CameraCaptureSession previewSession;
+    private int intSensorOrientation;
     private ImageReader imgReader;
     private HandlerThread backgroundThread;
     private Handler backgroundHandler;
@@ -141,7 +140,6 @@ public class Camera2Activity extends AppCompatActivity {
     }
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     public void onConfigurationChanged(Configuration newConfig){
-        Log.d("camera2Activity", "onConfigurationChanged");
         // 画面の回転・サイズ変更でプレビュー画像の向きを変更する.
         super.onConfigurationChanged(newConfig);
 
@@ -170,11 +168,6 @@ public class Camera2Activity extends AppCompatActivity {
     }
     private void initCameraView(){
         // プレビュー用のViewを追加.
-       // previewTextureView = new TextureView(this);
-       /* previewTextureView.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-*/
         previewTextureView = (AutoFitTextureView) findViewById(R.id.texture_preview_camera2);
 
         previewTextureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
@@ -225,9 +218,12 @@ public class Camera2Activity extends AppCompatActivity {
                     // Front Cameraならスキップ.
                     continue;
                 }
+                Integer cameraOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+                intSensorOrientation = (cameraOrientation != null)? cameraOrientation: 0;
+
                 // 端末がFlashlightに対応しているか確認.
                 Boolean isAvailable = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
-                isFlashlightSupported = (isAvailable != null);
+                isFlashlightSupported = (isAvailable != null && isAvailable);
 
                 // ストリームの設定を取得(出力サイズを取得する).
                 StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
@@ -235,11 +231,9 @@ public class Camera2Activity extends AppCompatActivity {
                     continue;
                 }
                 Size[] sizes = map.getOutputSizes(ImageFormat.JPEG);
-                for(Size size : sizes){
-                    Log.d("Camera2Activity", "width:" + size.getWidth() + " height:" + size.getHeight());
-                }
+
                 // 配列から最大の組み合わせを取得する.
-                Size maxImageSize = new Size(640, 480);
+                Size maxImageSize = new Size(width, height);
                 Optional<Size> maxSize = Stream.of(sizes)
                         .max((a, b) -> Integer.compare(a.getWidth(), b.getWidth()));
 
@@ -255,15 +249,15 @@ public class Camera2Activity extends AppCompatActivity {
                            public void onImageAvailable(ImageReader reader) {
                                Image image = null;
                                try {
-                                   image = reader.acquireLatestImage();
-
-                                   // TODO: Fragmentで取得した画像を表示.保存ボタンが押されたら画像の保存を実行する.
-                                   ByteBuffer buffer = image.getPlanes()[0].getBuffer();
-                                   byte[] bytes = new byte[buffer.capacity()];
-                                   buffer.get(bytes);
-                                   saveImage(bytes);
-                               } catch (FileNotFoundException e) {
-                                   e.printStackTrace();
+                                   try {
+                                       image = reader.acquireLatestImage();
+                                       ByteBuffer buffer = image.getPlanes()[0].getBuffer();
+                                       byte[] bytes = new byte[buffer.capacity()];
+                                       buffer.get(bytes);
+                                       saveImage(bytes);
+                                   }catch (FileNotFoundException e) {
+                                       e.printStackTrace();
+                                   }
                                } catch (IOException e) {
                                    e.printStackTrace();
                                } finally {
@@ -289,10 +283,10 @@ public class Camera2Activity extends AppCompatActivity {
                                    String[] paths = {strSaveDir + "/" + strSaveFileName};
                                    String[] mimeTypes = {"image/jpeg"};
                                    MediaScannerConnection.scanFile(
-                                           getApplicationContext(),
-                                           paths,
-                                           mimeTypes,
-                                           null);
+                                           getApplicationContext()
+                                           , paths
+                                           , mimeTypes
+                                           , null);
                                } finally {
                                    if (output != null) {
                                        output.close();
@@ -302,8 +296,8 @@ public class Camera2Activity extends AppCompatActivity {
                        }
                         , backgroundHandler);
 
-                int orientation = getResources().getConfiguration().orientation;
-                switch(orientation){
+                int displayOrientation = getResources().getConfiguration().orientation;
+                switch(displayOrientation){
                     case Configuration.ORIENTATION_LANDSCAPE:
                         previewTextureView.setAspectRatio(maxImageSize.getWidth(), maxImageSize.getHeight());
                         break;
@@ -424,8 +418,11 @@ public class Camera2Activity extends AppCompatActivity {
             setCameraMode(captureBuilder);
 
             // TODO: 画像の回転を調整する.
+            int rotation = getWindowManager().getDefaultDisplay().getRotation();
+int orientation = (ORIENTATIONS.get(rotation) + intSensorOrientation + 270) % 360;
+
             captureBuilder.set(CaptureRequest.JPEG_ORIENTATION
-                    , ORIENTATIONS.get(getWindowManager().getDefaultDisplay().getRotation()));
+                    , orientation);//(ORIENTATIONS.get(rotation) + intSensorOrientaion + 270) / 360);
 
             previewSession.stopRepeating();
             previewSession.capture(captureBuilder.build()
