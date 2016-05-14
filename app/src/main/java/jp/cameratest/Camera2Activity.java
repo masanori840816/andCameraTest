@@ -40,6 +40,9 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 
+import com.annimon.stream.Optional;
+import com.annimon.stream.Stream;
+
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -47,12 +50,15 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Comparator;
 
 public class Camera2Activity extends AppCompatActivity {
     private final static int REQUEST_PERMISSION_CAMERA = 1;
     private final static int REQUEST_PERMISSION_STORAGE = 2;
+    private final static int TEXTURE_MAX_WIDTH = 1920;
+    private final static int TEXTURE_MAX_HEIGHT = 1080;
     private Size previewSize;
-    private TextureView previewTextureView;
+     private AutoFitTextureView previewTextureView;
     private CameraDevice cameraDevice;
     private CaptureRequest.Builder previewBuilder;
     private CameraCaptureSession previewSession;
@@ -164,7 +170,13 @@ public class Camera2Activity extends AppCompatActivity {
     }
     private void initCameraView(){
         // プレビュー用のViewを追加.
-        previewTextureView = new TextureView(this);
+       // previewTextureView = new TextureView(this);
+       /* previewTextureView.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+*/
+        previewTextureView = (AutoFitTextureView) findViewById(R.id.texture_preview_camera2);
+
         previewTextureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
             @Override
             public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
@@ -183,11 +195,6 @@ public class Camera2Activity extends AppCompatActivity {
             public void onSurfaceTextureUpdated(SurfaceTexture surface) {
             }
         });
-        LinearLayout layoutPreview = (LinearLayout) findViewById(R.id.layout_preview_camera2);
-        if(layoutPreview != null){
-            layoutPreview.addView(previewTextureView);
-        }
-
         Button btnTakingPhoto = (Button) findViewById(R.id.btn_taking_photo_camera2);
         if(btnTakingPhoto != null){
             btnTakingPhoto.setOnClickListener(
@@ -224,18 +231,24 @@ public class Camera2Activity extends AppCompatActivity {
 
                 // ストリームの設定を取得(出力サイズを取得する).
                 StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-                if(map != null){
-                    Size[] sizes = map.getOutputSizes(ImageFormat.JPEG);
-                    for(Size size : sizes){
-                        Log.d("Camera2Activity", "width:" + size.getWidth() + " height:" + size.getHeight());
-                    }
-                    // TODO: 配列から最大の組み合わせを取得する.
-                    previewSize = map.getOutputSizes(ImageFormat.JPEG)[0];
+                if(map == null) {
+                    continue;
                 }
-// 画像を取得するためのImageReaderの作成.
-                //ImageReader reader = ImageReader.newInstance(previewSize.getWidth(), previewSize.getHeight(), ImageFormat.JPEG, 1);
-                // TODO: 正しい縦横比で出来るだけ大きなサイズの指定.
-                imgReader = ImageReader.newInstance(640, 480, ImageFormat.JPEG, 2);
+                Size[] sizes = map.getOutputSizes(ImageFormat.JPEG);
+                for(Size size : sizes){
+                    Log.d("Camera2Activity", "width:" + size.getWidth() + " height:" + size.getHeight());
+                }
+                // 配列から最大の組み合わせを取得する.
+                Size maxImageSize = new Size(640, 480);
+                Optional<Size> maxSize = Stream.of(sizes)
+                        .max((a, b) -> Integer.compare(a.getWidth(), b.getWidth()));
+
+                if(maxSize != null){
+                    maxImageSize = maxSize.get();
+                }
+
+                // 画像を取得するためのImageReaderの作成.
+                imgReader = ImageReader.newInstance(maxImageSize.getWidth(), maxImageSize.getHeight(), ImageFormat.JPEG, 2);
 
                 imgReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
                            @Override
@@ -288,6 +301,31 @@ public class Camera2Activity extends AppCompatActivity {
                            }
                        }
                         , backgroundHandler);
+
+                int orientation = getResources().getConfiguration().orientation;
+                switch(orientation){
+                    case Configuration.ORIENTATION_LANDSCAPE:
+                        previewTextureView.setAspectRatio(maxImageSize.getWidth(), maxImageSize.getHeight());
+                        break;
+                    case Configuration.ORIENTATION_PORTRAIT:
+                        previewTextureView.setAspectRatio(maxImageSize.getHeight(), maxImageSize.getWidth());
+                        break;
+                }
+                // 取得したSizeのうち、画面のアスペクト比に合致していてTEXTURE_MAX_WIDTH・TEXTURE_MAX_HEIGHT以下の最大値をセット.
+                previewSize = new Size(640, 480);
+
+                final float aspectRatio = ((float)maxImageSize.getHeight() / (float)maxImageSize.getWidth());
+
+                Optional<Size> setSize = Stream.of(sizes)
+                        .filter(size ->
+                                size.getWidth() <= TEXTURE_MAX_WIDTH
+                                        && size.getHeight() <= TEXTURE_MAX_HEIGHT
+                                        && size.getHeight() == (size.getWidth() * aspectRatio))
+                        .max((a, b) -> Integer.compare(a.getWidth(), b.getWidth()));
+
+                if(setSize != null){
+                    previewSize = setSize.get();
+                }
 
                 // プレビュー画面のサイズ調整.
                 configureTransform();
@@ -370,9 +408,8 @@ public class Camera2Activity extends AppCompatActivity {
 
                             Toast.makeText(getApplicationContext(), "onConfigureFailed", Toast.LENGTH_LONG).show();
                         }
-            }, backgroundHandler);
+            }, null);
         } catch (CameraAccessException e) {
-
             e.printStackTrace();
         }
     }
@@ -453,7 +490,7 @@ public class Camera2Activity extends AppCompatActivity {
     private void setCameraMode(CaptureRequest.Builder requestBuilder){
         // AutoFocus
         requestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-        requestBuilder.set(CaptureRequest.CONTROL_EFFECT_MODE, CaptureRequest.CONTROL_EFFECT_MODE_MONO);
+//        requestBuilder.set(CaptureRequest.CONTROL_EFFECT_MODE, CaptureRequest.CONTROL_EFFECT_MODE_MONO);
 
         // 端末がFlashlightに対応していたら自動で使用されるように設定.
         if(isFlashlightSupported){
