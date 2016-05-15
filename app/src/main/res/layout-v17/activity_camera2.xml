@@ -5,11 +5,6 @@
     android:layout_height='match_parent'
     tools:context="jp.cameratest.Camera2Activity">
 
-    <!--LinearLayout
-        android:layout_width='match_parent'
-        android:layout_height='match_parent'
-        android:id='@+id/layout_preview_camera2'
-        android:orientation='horizontal' /-->
     <jp.cameratest.AutoFitTextureView
         android:id='@+id/texture_preview_camera2'
         android:layout_width='wrap_content'

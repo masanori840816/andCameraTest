@@ -18,6 +18,7 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.hardware.display.DisplayManager;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.MediaScannerConnection;
@@ -56,12 +57,14 @@ public class Camera2Activity extends AppCompatActivity {
     private final static int TEXTURE_MAX_WIDTH = 1920;
     private final static int TEXTURE_MAX_HEIGHT = 1080;
     private Size previewSize;
-     private AutoFitTextureView previewTextureView;
+    private AutoFitTextureView previewTextureView;
     private CameraDevice cameraDevice;
     private CaptureRequest.Builder previewBuilder;
     private CameraCaptureSession previewSession;
     private int intSensorOrientation;
     private ImageReader imgReader;
+    private DisplayManager displayManager;
+    private DisplayManager.DisplayListener displayListener;
     private HandlerThread backgroundThread;
     private Handler backgroundHandler;
     private boolean isFlashlightSupported;
@@ -92,10 +95,16 @@ public class Camera2Activity extends AppCompatActivity {
             initCameraView();
         }
     }
+    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     @Override
     public void onResume(){
         super.onResume();
         startBackgroundThread();
+
+        if(displayManager != null
+                && displayListener != null){
+            displayManager.registerDisplayListener(displayListener, backgroundHandler);
+        }
     }
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     @Override
@@ -111,8 +120,17 @@ public class Camera2Activity extends AppCompatActivity {
 
         stopBackgroundThread();
 
-        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if(displayManager != null
+                && displayListener != null){
+            displayManager.unregisterDisplayListener(displayListener);
+        }
+
         super.onPause();
+    }
+    @Override
+    public void onDestroy(){
+        super.onDestroy();
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
     @Override
     public void onRequestPermissionsResult(int intRequestCode
@@ -137,13 +155,6 @@ public class Camera2Activity extends AppCompatActivity {
                 }
                 break;
         }
-    }
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-    public void onConfigurationChanged(Configuration newConfig){
-        // 画面の回転・サイズ変更でプレビュー画像の向きを変更する.
-        super.onConfigurationChanged(newConfig);
-
-        configureTransform();
     }
     @TargetApi(Build.VERSION_CODES.M)
     private void requestCameraPermission(){
@@ -178,7 +189,6 @@ public class Camera2Activity extends AppCompatActivity {
             }
             @Override
             public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
-                configureTransform();
             }
             @Override
             public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
@@ -205,6 +215,23 @@ public class Camera2Activity extends AppCompatActivity {
     }
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     private void openCamera(int width, int height) {
+
+        // 画面回転を検出.
+        displayListener = new DisplayManager.DisplayListener() {
+            @Override
+            public void onDisplayAdded(int displayId) {
+            }
+            @Override
+            public void onDisplayChanged(int displayId) {
+                configureTransform();
+            }
+            @Override
+            public void onDisplayRemoved(int displayId) {
+            }
+        };
+        displayManager = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
+        displayManager.registerDisplayListener(displayListener, backgroundHandler);
+
         // Camera機能にアクセスするためのCameraManagerの取得.
         CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
         try {
@@ -419,10 +446,9 @@ public class Camera2Activity extends AppCompatActivity {
 
             // TODO: 画像の回転を調整する.
             int rotation = getWindowManager().getDefaultDisplay().getRotation();
-int orientation = (ORIENTATIONS.get(rotation) + intSensorOrientation + 270) % 360;
 
             captureBuilder.set(CaptureRequest.JPEG_ORIENTATION
-                    , orientation);//(ORIENTATIONS.get(rotation) + intSensorOrientaion + 270) / 360);
+                    , (ORIENTATIONS.get(rotation) + intSensorOrientation + 270) % 360);
 
             previewSession.stopRepeating();
             previewSession.capture(captureBuilder.build()
@@ -445,43 +471,49 @@ int orientation = (ORIENTATIONS.get(rotation) + intSensorOrientation + 270) % 36
     }
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     private void configureTransform(){
-        // 画面の回転に合わせてmTextureViewの向き、サイズを変更する.
+        // 画面の回転に合わせてTextureViewの向き、サイズを変更する.
         if (previewTextureView == null || previewSize == null){
             return;
         }
-        Matrix matrix = new Matrix();
+        runOnUiThread(
+                () ->{
+                    int rotation = getWindowManager().getDefaultDisplay().getRotation();
 
-        Point pntDisplay = new Point();
-        getWindowManager().getDefaultDisplay().getSize(pntDisplay);
+                    Point displaySize = new Point();
+                    getWindowManager().getDefaultDisplay().getSize(displaySize);
 
-        RectF rctView = new RectF(0, 0, pntDisplay.x, pntDisplay.y);
-        RectF rctPreview = new RectF(0, 0, previewSize.getHeight(), previewSize.getWidth());
-        float centerX = rctView.centerX();
-        float centerY = rctView.centerY();
+                    RectF rctView = new RectF(0, 0, displaySize.x, displaySize.y);
+                    RectF rctPreview = new RectF(0, 0, previewSize.getHeight(), previewSize.getWidth());
+                    float centerX = rctView.centerX();
+                    float centerY = rctView.centerY();
+                    rctPreview.offset(centerX - rctPreview.centerX(), centerY - rctPreview.centerY());
 
-        rctPreview.offset(centerX - rctPreview.centerX(), centerY - rctPreview.centerY());
-        matrix.setRectToRect(rctView, rctPreview, Matrix.ScaleToFit.FILL);
-        float scale = Math.max(
-                (float) rctView.width() / previewSize.getWidth(),
-                (float) rctView.height() / previewSize.getHeight()
+                    Matrix matrix = new Matrix();
+                    matrix.setRectToRect(rctView, rctPreview, Matrix.ScaleToFit.FILL);
+                    float scale = Math.max(
+                            (float) displaySize.x / previewSize.getWidth(),
+                            (float) displaySize.y / previewSize.getHeight()
+                    );
+                    matrix.postScale(scale, scale, centerX, centerY);
+
+                    switch (getWindowManager().getDefaultDisplay().getRotation()) {
+                        case Surface.ROTATION_0:
+                            matrix.postRotate(0, centerX, centerY);
+                            break;
+                        case Surface.ROTATION_90:
+                            matrix.postRotate(270, centerX, centerY);
+                            break;
+                        case Surface.ROTATION_180:
+                            matrix.postRotate(180, centerX, centerY);
+                            break;
+                        case Surface.ROTATION_270:
+                            matrix.postRotate(90, centerX, centerY);
+                            break;
+                    }
+                    previewTextureView.setTransform(matrix);
+                }
         );
-        matrix.postScale(scale, scale, centerX, centerY);
 
-        switch (getWindowManager().getDefaultDisplay().getRotation()) {
-            case Surface.ROTATION_0:
-                matrix.postRotate(0, centerX, centerY);
-                break;
-            case Surface.ROTATION_90:
-                matrix.postRotate(270, centerX, centerY);
-                break;
-            case Surface.ROTATION_180:
-                matrix.postRotate(180, centerX, centerY);
-                break;
-            case Surface.ROTATION_270:
-                matrix.postRotate(90, centerX, centerY);
-                break;
-        }
-        previewTextureView.setTransform(matrix);
     }
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     private void setCameraMode(CaptureRequest.Builder requestBuilder){
