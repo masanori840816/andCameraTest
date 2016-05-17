@@ -22,6 +22,7 @@ import android.hardware.display.DisplayManager;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.MediaScannerConnection;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
@@ -68,6 +69,9 @@ public class Camera2Activity extends AppCompatActivity {
     private HandlerThread backgroundThread;
     private Handler backgroundHandler;
     private boolean isFlashlightSupported;
+    // 画像保存時Storageの権限を要求した場合に、BackgroundThread再開後に画像保存処理を行うためのフラグ.
+    private boolean isPictureTaken = false;
+    private Image capturedImage;
 
     private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
     static {
@@ -87,13 +91,7 @@ public class Camera2Activity extends AppCompatActivity {
 
         setContentView(R.layout.activity_camera2);
 
-        // OS6.0以上ならCameraへのアクセス権確認.
-        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M){
-            requestCameraPermission();
-        }
-        else{
-            initCameraView();
-        }
+        initCameraView();
     }
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     @Override
@@ -105,11 +103,16 @@ public class Camera2Activity extends AppCompatActivity {
                 && displayListener != null){
             displayManager.registerDisplayListener(displayListener, backgroundHandler);
         }
+        // Storageの権限要求後は画像の保存処理を行う.
+        if(isPictureTaken){
+            prepareSavingImage();
+            isPictureTaken = false;
+        }
     }
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     @Override
     public void onPause(){
-        if(previewSession != null){
+        if(previewSession != null) {
             previewSession.close();
             previewSession = null;
         }
@@ -117,19 +120,23 @@ public class Camera2Activity extends AppCompatActivity {
             cameraDevice.close();
             cameraDevice = null;
         }
-
-        stopBackgroundThread();
-
         if(displayManager != null
                 && displayListener != null){
             displayManager.unregisterDisplayListener(displayListener);
         }
-
+        stopBackgroundThread();
         super.onPause();
     }
+    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     @Override
     public void onDestroy(){
+
+        if(imgReader != null){
+            imgReader.close();
+            imgReader = null;
+        }
         super.onDestroy();
+
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
     @Override
@@ -139,9 +146,16 @@ public class Camera2Activity extends AppCompatActivity {
         super.onRequestPermissionsResult(intRequestCode, strPermissions, intGrantResults);
         switch (intRequestCode){
             case REQUEST_PERMISSION_CAMERA:
+                if(intGrantResults.length <= 0){
+                    return;
+                }
                 if (intGrantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // 権限が許可されたらプレビュー画面の使用準備.
-                    initCameraView();
+                    runOnUiThread(
+                            () ->{
+                                // 権限が許可されたらプレビュー画面の使用準備.
+                                openCamera(previewTextureView.getWidth(), previewTextureView.getHeight());
+                            }
+                    );
                 }
                 else{
                     // 権限付与を拒否されたらMainActivityに戻る.
@@ -149,9 +163,17 @@ public class Camera2Activity extends AppCompatActivity {
                 }
                 break;
             case REQUEST_PERMISSION_STORAGE:
+                if(intGrantResults.length <= 0){
+                    return;
+                }
                 if (intGrantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     // Storageへのアクセスが許可されたら画像を保存する.
-                    takePicture();
+                   // prepareSavingImage();
+                    isPictureTaken = true;
+                }
+                else{
+                    // 権限付与を拒否されたらMainActivityに戻る.
+                    finish();
                 }
                 break;
         }
@@ -160,7 +182,7 @@ public class Camera2Activity extends AppCompatActivity {
     private void requestCameraPermission(){
         if(checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED){
             // 権限が許可されていたらプレビュー画面の使用準備.
-            initCameraView();
+            openCamera(previewTextureView.getWidth(), previewTextureView.getHeight());
         }
         else{
             requestPermissions(new String[]{Manifest.permission.CAMERA}, REQUEST_PERMISSION_CAMERA);
@@ -170,7 +192,8 @@ public class Camera2Activity extends AppCompatActivity {
     private void requestStoragePermission(){
         if(checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
                 && checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED){
-            takePicture();
+            //takePicture();
+            prepareSavingImage();
         }
         else{
             requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE}
@@ -185,7 +208,13 @@ public class Camera2Activity extends AppCompatActivity {
             @Override
             public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
                 // Textureが有効化されたらプレビューを表示.
-                openCamera(width, height);
+                // OS6.0以上ならCameraへのアクセス権確認.
+                if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M){
+                    requestCameraPermission();
+                }
+                else{
+                    openCamera(width, height);
+                }
             }
             @Override
             public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
@@ -202,13 +231,7 @@ public class Camera2Activity extends AppCompatActivity {
         if(btnTakingPhoto != null){
             btnTakingPhoto.setOnClickListener(
                     (View v) ->{
-                        // OS6.0以上ならStorageへのアクセス権を確認.
-                        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                            requestStoragePermission();
-                        }
-                        else{
-                            takePicture();
-                        }
+                        takePicture();
                     }
             );
         }
@@ -271,57 +294,19 @@ public class Camera2Activity extends AppCompatActivity {
                 // 画像を取得するためのImageReaderの作成.
                 imgReader = ImageReader.newInstance(maxImageSize.getWidth(), maxImageSize.getHeight(), ImageFormat.JPEG, 2);
 
-                imgReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
-                           @Override
-                           public void onImageAvailable(ImageReader reader) {
-                               Image image = null;
-                               try {
-                                   try {
-                                       image = reader.acquireLatestImage();
-                                       ByteBuffer buffer = image.getPlanes()[0].getBuffer();
-                                       byte[] bytes = new byte[buffer.capacity()];
-                                       buffer.get(bytes);
-                                       saveImage(bytes);
-                                   }catch (FileNotFoundException e) {
-                                       e.printStackTrace();
-                                   }
-                               } catch (IOException e) {
-                                   e.printStackTrace();
-                               } finally {
-                                   if (image != null) {
-                                       image.close();
-                                   }
-                               }
-                           }
-                           private void saveImage(byte[] bytes) throws IOException {
-                               OutputStream output = null;
-                               try {
-                                   // ファイルの保存先のディレクトリとファイル名.
-                                   String strSaveDir = Environment.getExternalStorageDirectory().toString() + "/DCIM";
-                                   String strSaveFileName = "pic_" + System.currentTimeMillis() +".jpg";
+                imgReader.setOnImageAvailableListener(
+                    (ImageReader reader)-> {
+                       capturedImage = reader.acquireLatestImage();
 
-                                   final File file = new File(strSaveDir, strSaveFileName);
-
-                                   // 生成した画像を出力する.
-                                   output = new FileOutputStream(file);
-                                   output.write(bytes);
-
-                                   // 保存した画像を反映させる.
-                                   String[] paths = {strSaveDir + "/" + strSaveFileName};
-                                   String[] mimeTypes = {"image/jpeg"};
-                                   MediaScannerConnection.scanFile(
-                                           getApplicationContext()
-                                           , paths
-                                           , mimeTypes
-                                           , null);
-                               } finally {
-                                   if (output != null) {
-                                       output.close();
-                                   }
-                               }
-                           }
+                       // OS6.0以上ならStorageへのアクセス権を確認.
+                       if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                           requestStoragePermission();
                        }
-                        , backgroundHandler);
+                       else{
+                            prepareSavingImage();
+                       }
+                    }
+                    , backgroundHandler);
 
                 int displayOrientation = getResources().getConfiguration().orientation;
                 switch(displayOrientation){
@@ -358,10 +343,10 @@ public class Camera2Activity extends AppCompatActivity {
                                 cameraDevice = camera;
                             }
                             runOnUiThread(
-                                    () -> {
-                                        // カメラ画面表示中はScreenをOffにしない.
-                                        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-                                    });
+                                () -> {
+                                    // カメラ画面表示中はScreenをOffにしない.
+                                    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                                });
                             createCameraPreviewSession();
                         }
                         @Override
@@ -382,6 +367,69 @@ public class Camera2Activity extends AppCompatActivity {
             }
         } catch (CameraAccessException e) {
             e.printStackTrace();
+        }
+    }
+    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+    private void prepareSavingImage(){
+        backgroundHandler.post(
+            ()->{
+                try {
+                    try {
+                        ByteBuffer buffer = capturedImage.getPlanes()[0].getBuffer();
+                        byte[] bytes = new byte[buffer.capacity()];
+                        buffer.get(bytes);
+                        saveImage(bytes);
+                    }catch (FileNotFoundException e) {
+                        e.printStackTrace();
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                } finally {
+                    if (capturedImage != null) {
+                        capturedImage.close();
+                    }
+                }
+            }
+        );
+    }
+    private void saveImage(byte[] bytes) throws IOException {
+        OutputStream output = null;
+        try {
+            // ファイルの保存先のディレクトリとファイル名.
+            String strSaveDir = Environment.getExternalStorageDirectory().toString() + "/DCIM";
+            String strSaveFileName = "pic_" + System.currentTimeMillis() +".jpg";
+
+            final File file = new File(strSaveDir, strSaveFileName);
+
+            // 生成した画像を出力する.
+            output = new FileOutputStream(file);
+            output.write(bytes);
+
+            // 保存した画像を反映させる.
+            String[] paths = {strSaveDir + "/" + strSaveFileName};
+            String[] mimeTypes = {"image/jpeg"};
+            MediaScannerConnection.scanFile(
+                    getApplicationContext()
+                    , paths
+                    , mimeTypes
+                    , (String path, Uri uri) ->{
+                        runOnUiThread(
+                            ()->{
+                                Toast.makeText(getApplicationContext(), "Saved: " + path, Toast.LENGTH_SHORT).show();
+                                // もう一度カメラのプレビュー表示を開始する.
+                                if(cameraDevice == null){
+                                    openCamera(previewTextureView.getWidth(), previewTextureView.getHeight());
+                                }
+                                else{
+                                    createCameraPreviewSession();
+                                }
+                            }
+                        );
+                    });
+        } finally {
+            if (output != null) {
+                output.close();
+            }
         }
     }
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
@@ -416,7 +464,6 @@ public class Camera2Activity extends AppCompatActivity {
                                 return;
                             }
                             setCameraMode(previewBuilder);
-
                             try {
                                 previewSession.setRepeatingRequest(previewBuilder.build(), null, backgroundHandler);
                             } catch (CameraAccessException e) {
@@ -435,8 +482,8 @@ public class Camera2Activity extends AppCompatActivity {
         }
     }
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-    protected void takePicture() {
-        if(cameraDevice == null) {
+    private void takePicture() {
+        if(cameraDevice == null || previewSession == null) {
             return;
         }
         try {
@@ -444,27 +491,15 @@ public class Camera2Activity extends AppCompatActivity {
             captureBuilder.addTarget(imgReader.getSurface());
             setCameraMode(captureBuilder);
 
-            // TODO: 画像の回転を調整する.
+            // 画像の回転を調整する.
             int rotation = getWindowManager().getDefaultDisplay().getRotation();
 
             captureBuilder.set(CaptureRequest.JPEG_ORIENTATION
                     , (ORIENTATIONS.get(rotation) + intSensorOrientation + 270) % 360);
-
+            // プレビュー画面の更新を一旦ストップ.
             previewSession.stopRepeating();
-            previewSession.capture(captureBuilder.build()
-                    , new CameraCaptureSession.CaptureCallback() {
-                        @Override
-                        public void onCaptureCompleted(@NonNull CameraCaptureSession session
-                                , @NonNull CaptureRequest request
-                                , @NonNull TotalCaptureResult result) {
-                            // 画像の保存が終わったらToast表示.
-                            super.onCaptureCompleted(session, request, result);
-                            Toast.makeText(getApplicationContext(), "Saved", Toast.LENGTH_SHORT).show();
-                            // もう一度カメラのプレビュー表示を開始する.
-                            createCameraPreviewSession();
-                        }
-                    }
-                    , null);
+            // 画像の保存.
+            previewSession.capture(captureBuilder.build(), null, null);
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
@@ -477,8 +512,7 @@ public class Camera2Activity extends AppCompatActivity {
         }
         runOnUiThread(
                 () ->{
-                    int rotation = getWindowManager().getDefaultDisplay().getRotation();
-
+                    // Displayサイズの取得.
                     Point displaySize = new Point();
                     getWindowManager().getDefaultDisplay().getSize(displaySize);
 
@@ -490,9 +524,11 @@ public class Camera2Activity extends AppCompatActivity {
 
                     Matrix matrix = new Matrix();
                     matrix.setRectToRect(rctView, rctPreview, Matrix.ScaleToFit.FILL);
+
+
                     float scale = Math.max(
-                            (float) displaySize.x / previewSize.getWidth(),
-                            (float) displaySize.y / previewSize.getHeight()
+                            displaySize.x / previewSize.getWidth()
+                            , displaySize.y / previewSize.getHeight()
                     );
                     matrix.postScale(scale, scale, centerX, centerY);
 
