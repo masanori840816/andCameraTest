@@ -16,7 +16,6 @@ import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
-import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.hardware.display.DisplayManager;
 import android.media.Image;
@@ -52,6 +51,7 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
+@TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class Camera2Activity extends AppCompatActivity {
     private final static int REQUEST_PERMISSION_CAMERA = 1;
     private final static int REQUEST_PERMISSION_STORAGE = 2;
@@ -72,6 +72,8 @@ public class Camera2Activity extends AppCompatActivity {
     // 画像保存時Storageの権限を要求した場合に、BackgroundThread再開後に画像保存処理を行うためのフラグ.
     private boolean isPictureTaken = false;
     private Image capturedImage;
+    // 端末を180度回転させた場合に、2回目のconfigureTransformを呼ぶのに使う.
+    private int intLastRotationNum = -1;
 
     private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
     static {
@@ -93,7 +95,6 @@ public class Camera2Activity extends AppCompatActivity {
 
         initCameraView();
     }
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     @Override
     public void onResume(){
         super.onResume();
@@ -109,7 +110,6 @@ public class Camera2Activity extends AppCompatActivity {
             isPictureTaken = false;
         }
     }
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     @Override
     public void onPause(){
         if(previewSession != null) {
@@ -127,7 +127,6 @@ public class Camera2Activity extends AppCompatActivity {
         stopBackgroundThread();
         super.onPause();
     }
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     @Override
     public void onDestroy(){
 
@@ -218,6 +217,7 @@ public class Camera2Activity extends AppCompatActivity {
             }
             @Override
             public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
+                configureTransform(width, height);
             }
             @Override
             public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
@@ -230,13 +230,12 @@ public class Camera2Activity extends AppCompatActivity {
         Button btnTakingPhoto = (Button) findViewById(R.id.btn_taking_photo_camera2);
         if(btnTakingPhoto != null){
             btnTakingPhoto.setOnClickListener(
-                    (View v) ->{
-                        takePicture();
-                    }
+                (View v) ->{
+                    takePicture();
+                }
             );
         }
     }
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     private void openCamera(int width, int height) {
 
         // 画面回転を検出.
@@ -246,7 +245,18 @@ public class Camera2Activity extends AppCompatActivity {
             }
             @Override
             public void onDisplayChanged(int displayId) {
-                configureTransform();
+                // Displayサイズの取得.
+                Point displaySize = new Point();
+                getWindowManager().getDefaultDisplay().getSize(displaySize);
+
+                configureTransform(displaySize.x, displaySize.y);
+
+                int intNewRotationNum = getWindowManager().getDefaultDisplay().getRotation();
+                // 端末を180度回転させると2回目のconfigureTransformが呼ばれないのでここで実行.
+                if(Math.abs(intNewRotationNum - intLastRotationNum) == 2){
+                    configureTransform(previewSize.getWidth(), previewSize.getHeight());
+                }
+                intLastRotationNum = intNewRotationNum;
             }
             @Override
             public void onDisplayRemoved(int displayId) {
@@ -334,7 +344,8 @@ public class Camera2Activity extends AppCompatActivity {
                 }
 
                 // プレビュー画面のサイズ調整.
-                configureTransform();
+                //configureTransform(width, height);
+                //configureTransform(previewSize.getWidth(), previewSize.getHeight());
                 try {
                     manager.openCamera(strCameraId, new CameraDevice.StateCallback() {
                         @Override
@@ -369,7 +380,6 @@ public class Camera2Activity extends AppCompatActivity {
             e.printStackTrace();
         }
     }
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     private void prepareSavingImage(){
         backgroundHandler.post(
             ()->{
@@ -406,18 +416,17 @@ public class Camera2Activity extends AppCompatActivity {
             output.write(bytes);
 
             // 保存した画像を反映させる.
-            String[] paths = {strSaveDir + "/" + strSaveFileName};
-            String[] mimeTypes = {"image/jpeg"};
             MediaScannerConnection.scanFile(
                     getApplicationContext()
-                    , paths
-                    , mimeTypes
+                    , new String[]{strSaveDir + "/" + strSaveFileName}
+                    , new String[]{"image/jpeg"}
                     , (String path, Uri uri) ->{
                         runOnUiThread(
                             ()->{
                                 Toast.makeText(getApplicationContext(), "Saved: " + path, Toast.LENGTH_SHORT).show();
                                 // もう一度カメラのプレビュー表示を開始する.
                                 if(cameraDevice == null){
+                                    // 権限確認でPause状態から復帰したらCameraDeviceの取得も行う.
                                     openCamera(previewTextureView.getWidth(), previewTextureView.getHeight());
                                 }
                                 else{
@@ -432,7 +441,6 @@ public class Camera2Activity extends AppCompatActivity {
             }
         }
     }
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     protected void createCameraPreviewSession() {
 
         if(cameraDevice == null || ! previewTextureView.isAvailable() || previewSize == null) {
@@ -481,7 +489,6 @@ public class Camera2Activity extends AppCompatActivity {
             e.printStackTrace();
         }
     }
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     private void takePicture() {
         if(cameraDevice == null || previewSession == null) {
             return;
@@ -492,10 +499,8 @@ public class Camera2Activity extends AppCompatActivity {
             setCameraMode(captureBuilder);
 
             // 画像の回転を調整する.
-            int rotation = getWindowManager().getDefaultDisplay().getRotation();
-
             captureBuilder.set(CaptureRequest.JPEG_ORIENTATION
-                    , (ORIENTATIONS.get(rotation) + intSensorOrientation + 270) % 360);
+                    , (ORIENTATIONS.get(getWindowManager().getDefaultDisplay().getRotation()) + intSensorOrientation + 270) % 360);
             // プレビュー画面の更新を一旦ストップ.
             previewSession.stopRepeating();
             // 画像の保存.
@@ -504,54 +509,45 @@ public class Camera2Activity extends AppCompatActivity {
             e.printStackTrace();
         }
     }
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-    private void configureTransform(){
+    private void configureTransform(int viewWidth, int viewHeight){
         // 画面の回転に合わせてTextureViewの向き、サイズを変更する.
         if (previewTextureView == null || previewSize == null){
             return;
         }
         runOnUiThread(
-                () ->{
-                    // Displayサイズの取得.
-                    Point displaySize = new Point();
-                    getWindowManager().getDefaultDisplay().getSize(displaySize);
+            () ->{
+                RectF rctView = new RectF(0, 0, viewWidth, viewHeight);
+                RectF rctPreview = new RectF(0, 0, previewSize.getHeight(), previewSize.getWidth());
+                float centerX = rctView.centerX();
+                float centerY = rctView.centerY();
 
-                    RectF rctView = new RectF(0, 0, displaySize.x, displaySize.y);
-                    RectF rctPreview = new RectF(0, 0, previewSize.getHeight(), previewSize.getWidth());
-                    float centerX = rctView.centerX();
-                    float centerY = rctView.centerY();
+                Matrix matrix = new Matrix();
+
+                int deviceRotation = getWindowManager().getDefaultDisplay().getRotation();
+                if(deviceRotation == Surface.ROTATION_90
+                        || deviceRotation == Surface.ROTATION_270){
+
                     rctPreview.offset(centerX - rctPreview.centerX(), centerY - rctPreview.centerY());
 
-                    Matrix matrix = new Matrix();
                     matrix.setRectToRect(rctView, rctPreview, Matrix.ScaleToFit.FILL);
 
-
+                    // 縦または横の画面一杯に表示するためのScale値を取得.
                     float scale = Math.max(
-                            displaySize.x / previewSize.getWidth()
-                            , displaySize.y / previewSize.getHeight()
+                            (float) viewHeight / previewSize.getHeight()
+                            , (float) viewWidth / previewSize.getWidth()
                     );
                     matrix.postScale(scale, scale, centerX, centerY);
-
-                    switch (getWindowManager().getDefaultDisplay().getRotation()) {
-                        case Surface.ROTATION_0:
-                            matrix.postRotate(0, centerX, centerY);
-                            break;
-                        case Surface.ROTATION_90:
-                            matrix.postRotate(270, centerX, centerY);
-                            break;
-                        case Surface.ROTATION_180:
-                            matrix.postRotate(180, centerX, centerY);
-                            break;
-                        case Surface.ROTATION_270:
-                            matrix.postRotate(90, centerX, centerY);
-                            break;
-                    }
-                    previewTextureView.setTransform(matrix);
+                    // ROTATION_90: 270度回転、ROTATION_270: 90度回転.
+                    matrix.postRotate((90 * (deviceRotation + 2)) % 360, centerX, centerY);
                 }
+                else{
+                    // ROTATION_0: 0度回転、ROTATION_180: 180度回転.
+                    matrix.postRotate(90 * deviceRotation, centerX, centerY);
+                }
+                previewTextureView.setTransform(matrix);
+            }
         );
-
     }
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     private void setCameraMode(CaptureRequest.Builder requestBuilder){
         // AutoFocus
         requestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
@@ -567,7 +563,6 @@ public class Camera2Activity extends AppCompatActivity {
         backgroundThread.start();
         backgroundHandler = new Handler(backgroundThread.getLooper());
     }
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     private void stopBackgroundThread(){
         backgroundThread.quitSafely();
         try{
