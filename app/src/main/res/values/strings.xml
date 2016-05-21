@@ -10,5 +10,6 @@
     <string name="btn_save">SAVE</string>
     <string name="btn_cancel">CANCEL</string>
     <string name="title_activity_camera">CameraActivity</string>
+    <string name='saved_orientation_num'>SavedOrientationNum</string>
 
 </resources>

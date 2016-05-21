@@ -7,36 +7,28 @@ import android.view.TextureView;
 /**
  * Created by masanori on 2016/05/13.
  */
-public class AutoFitTextureView extends TextureView {
+public class PreviewTextureView extends TextureView {
     private int ratioWidth = 0;
     private int ratioHeight = 0;
 
-    public AutoFitTextureView(Context context) {
+    public PreviewTextureView(Context context) {
         this(context, null);
     }
 
-    public AutoFitTextureView(Context context, AttributeSet attrs) {
+    public PreviewTextureView(Context context, AttributeSet attrs) {
         this(context, attrs, 0);
     }
 
-    public AutoFitTextureView(Context context, AttributeSet attrs, int defStyle) {
+    public PreviewTextureView(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
     }
-
-    /**
-     * Sets the aspect ratio for this view. The size of the view will be measured based on the ratio
-     * calculated from the parameters. Note that the actual sizes of parameters don't matter, that
-     * is, calling setAspectRatio(2, 3) and setAspectRatio(4, 6) make the same result.
-     *
-     * @param width  Relative horizontal size
-     * @param height Relative vertical size
-     */
     public void setAspectRatio(int width, int height) {
         if (width < 0 || height < 0) {
             throw new IllegalArgumentException("Size cannot be negative.");
         }
         ratioWidth = width;
         ratioHeight = height;
+        // サイズを指定してViewを更新する(onMeasure実行).
         requestLayout();
     }
 

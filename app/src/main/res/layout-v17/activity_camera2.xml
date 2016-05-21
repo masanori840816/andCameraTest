@@ -5,7 +5,7 @@
     android:layout_height='match_parent'
     tools:context="jp.cameratest.Camera2Activity">
 
-    <jp.cameratest.AutoFitTextureView
+    <jp.cameratest.PreviewTextureView
         android:id='@+id/texture_preview_camera2'
         android:layout_width='wrap_content'
         android:layout_height='wrap_content'
