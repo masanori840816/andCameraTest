@@ -55,15 +55,15 @@ import java.util.Arrays;
 public class Camera2Activity extends AppCompatActivity {
     private final static int REQUEST_PERMISSION_CAMERA = 1;
     private final static int REQUEST_PERMISSION_STORAGE = 2;
-    private final static int TEXTURE_MAX_WIDTH = 1920;
-    private final static int TEXTURE_MAX_HEIGHT = 1080;
+    private final static int TextureViewMaxWidth = 1920;
+    private final static int TextureViewMaxHeight = 1080;
     private Size previewSize;
     private PreviewTextureView previewTextureView;
     private CameraDevice cameraDevice;
     private CaptureRequest.Builder previewBuilder;
     private CameraCaptureSession previewSession;
     private int intSensorOrientation;
-    private ImageReader imgReader;
+    private ImageReader previewImageReader;
     private DisplayManager displayManager;
     private DisplayManager.DisplayListener displayListener;
     private HandlerThread backgroundThread;
@@ -112,9 +112,13 @@ public class Camera2Activity extends AppCompatActivity {
         if(savedOrientationNum == lastOrientationNum){
             openCamera(previewTextureView.getWidth(), previewTextureView.getHeight());
         }
+        if(isInMultiWindowMode()){
+            configureTransform(previewTextureView.getWidth(), previewTextureView.getHeight());
+        }
     }
     @Override
     public void onPause(){
+        super.onPause();
         if(previewSession != null) {
             previewSession.close();
             previewSession = null;
@@ -131,19 +135,23 @@ public class Camera2Activity extends AppCompatActivity {
         displayListener = null;
 
         stopBackgroundThread();
-        super.onPause();
+        
     }
     @Override
     public void onDestroy(){
-
-        if(imgReader != null){
-            imgReader.close();
-            imgReader = null;
-        }
         super.onDestroy();
-
+        if(previewImageReader != null){
+            previewImageReader.close();
+            previewImageReader = null;
+        }
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
+    /*
+    // MultiwindowModeを開始・終了した場合に呼ばれる.
+    @Override
+    public void onMultiWindowModeChanged(boolean isInMultiWindowMode) {
+        super.onMultiWindowModeChanged(isInMultiWindowMode);
+    }*/
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
@@ -244,6 +252,10 @@ public class Camera2Activity extends AppCompatActivity {
         }
     }
     private void openCamera(int width, int height) {
+        if(width <= 0
+                || height <= 0){
+            return;
+        }
         // 画面回転を検出.
         displayListener = new DisplayManager.DisplayListener() {
             @Override
@@ -251,6 +263,9 @@ public class Camera2Activity extends AppCompatActivity {
             }
             @Override
             public void onDisplayChanged(int displayId) {
+
+                Log.d("testtesttest", "onDisplayChanged");
+
                 // Displayサイズの取得.
                 Point displaySize = new Point();
                 getWindowManager().getDefaultDisplay().getSize(displaySize);
@@ -264,7 +279,6 @@ public class Camera2Activity extends AppCompatActivity {
                     // 180度回転の場合はonResumeが呼ばれないのでここで角度情報を保持.
                     lastOrientationNum = intNewRotationNum;
                 }
-
             }
             @Override
             public void onDisplayRemoved(int displayId) {
@@ -310,9 +324,9 @@ public class Camera2Activity extends AppCompatActivity {
                 }
 
                 // 画像を取得するためのImageReaderの作成.
-                imgReader = ImageReader.newInstance(maxImageSize.getWidth(), maxImageSize.getHeight(), ImageFormat.JPEG, 2);
+                previewImageReader = ImageReader.newInstance(maxImageSize.getWidth(), maxImageSize.getHeight(), ImageFormat.JPEG, 2);
 
-                imgReader.setOnImageAvailableListener(
+                previewImageReader.setOnImageAvailableListener(
                     (ImageReader reader)-> {
                        capturedImage = reader.acquireLatestImage();
 
@@ -326,28 +340,31 @@ public class Camera2Activity extends AppCompatActivity {
                     }
                     , backgroundHandler);
 
-                int displayOrientation = getResources().getConfiguration().orientation;
-                switch(displayOrientation){
-                    case Configuration.ORIENTATION_LANDSCAPE:
-                        previewTextureView.setAspectRatio(maxImageSize.getWidth(), maxImageSize.getHeight());
-                        break;
-                    case Configuration.ORIENTATION_PORTRAIT:
-                        previewTextureView.setAspectRatio(maxImageSize.getHeight(), maxImageSize.getWidth());
-                        break;
-                }
-                // 取得したSizeのうち、画面のアスペクト比に合致していてTEXTURE_MAX_WIDTH・TEXTURE_MAX_HEIGHT以下の最大値をセット.
-                previewSize = new Size(640, 480);
+                // Multiwindow用に画面の向きではなくDisplayサイズで縦横確認.
+                Point displaySize = new Point();
+                getWindowManager().getDefaultDisplay().getSize(displaySize);
 
+                if(displaySize.x >= displaySize.y){
+                    previewTextureView.setAspectRatio(maxImageSize.getWidth(), maxImageSize.getHeight());
+                }
+                else{
+                    previewTextureView.setAspectRatio(maxImageSize.getHeight(), maxImageSize.getWidth());
+                }
+
+                // 取得したSizeのうち、画面のアスペクト比に合致していてTextureViewMaxWidth・TextureViewMaxHeight以下の最大値をセット.
                 final float aspectRatio = ((float)maxImageSize.getHeight() / (float)maxImageSize.getWidth());
 
                 Optional<Size> setSize = Stream.of(sizes)
                         .filter(size ->
-                                size.getWidth() <= TEXTURE_MAX_WIDTH
-                                        && size.getHeight() <= TEXTURE_MAX_HEIGHT
+                                size.getWidth() <= TextureViewMaxWidth
+                                        && size.getHeight() <= TextureViewMaxHeight
                                         && size.getHeight() == (size.getWidth() * aspectRatio))
                         .max((a, b) -> Integer.compare(a.getWidth(), b.getWidth()));
 
-                if(setSize != null){
+                if(setSize == null){
+                    previewSize = new Size(640, 480);
+                }
+                else{
                     previewSize = setSize.get();
                 }
 
@@ -367,14 +384,13 @@ public class Camera2Activity extends AppCompatActivity {
                         }
                         @Override
                         public void onDisconnected(@NonNull CameraDevice cmdCamera) {
-                            cmdCamera.close();
+                            cameraDevice.close();
                             cameraDevice = null;
                         }
                         @Override
                         public void onError(@NonNull CameraDevice cmdCamera, int error) {
-                            cmdCamera.close();
+                            cameraDevice.close();
                             cameraDevice = null;
-                            Log.e("CameraView", "onError");
                         }
                     }, backgroundHandler);
                 }catch (SecurityException s){
@@ -466,7 +482,7 @@ public class Camera2Activity extends AppCompatActivity {
         previewBuilder.addTarget(surface);
 
         try {
-            cameraDevice.createCaptureSession(Arrays.asList(surface, imgReader.getSurface())
+            cameraDevice.createCaptureSession(Arrays.asList(surface, previewImageReader.getSurface())
                     , new CameraCaptureSession.StateCallback() {
                         @Override
                         public void onConfigured(@NonNull CameraCaptureSession session) {
@@ -498,7 +514,7 @@ public class Camera2Activity extends AppCompatActivity {
         }
         try {
             final CaptureRequest.Builder captureBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
-            captureBuilder.addTarget(imgReader.getSurface());
+            captureBuilder.addTarget(previewImageReader.getSurface());
             setCameraMode(captureBuilder);
 
             // 画像の回転を調整する.
