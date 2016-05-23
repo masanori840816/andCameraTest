@@ -53,8 +53,8 @@ import java.util.Arrays;
 
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class Camera2Activity extends AppCompatActivity {
-    private final static int REQUEST_PERMISSION_CAMERA = 1;
-    private final static int REQUEST_PERMISSION_STORAGE = 2;
+    private final static int RequestNumPermissionCamera = 1;
+    private final static int RequestNumPermissionStorage = 2;
     private final static int TextureViewMaxWidth = 1920;
     private final static int TextureViewMaxHeight = 1080;
     private Size previewSize;
@@ -75,6 +75,7 @@ public class Camera2Activity extends AppCompatActivity {
     // 端末を180度回転させた場合に、2回目のconfigureTransformを呼ぶのに使う.
     private int lastOrientationNum = -1;
     private int savedOrientationNum = -1;
+    private MediaActionSound mediaActionSound;
 
     private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
     static {
@@ -93,13 +94,17 @@ public class Camera2Activity extends AppCompatActivity {
 
         initCameraView();
 
-        if(savedInstanceState != null){
+        if(isInMultiWindowMode()){
+            savedOrientationNum = -1;
+        }
+        else if(savedInstanceState != null){
             savedOrientationNum = savedInstanceState.getInt(getString(R.string.saved_orientation_num));
         }
     }
     @Override
     public void onResume(){
         super.onResume();
+
         startBackgroundThread();
 
         // Storageの権限要求後は画像の保存処理を行う.
@@ -109,11 +114,11 @@ public class Camera2Activity extends AppCompatActivity {
         }
         lastOrientationNum = getWindowManager().getDefaultDisplay().getRotation();
 
-        if(savedOrientationNum == lastOrientationNum){
-            openCamera(previewTextureView.getWidth(), previewTextureView.getHeight());
-        }
-        if(isInMultiWindowMode()){
-            configureTransform(previewTextureView.getWidth(), previewTextureView.getHeight());
+        if(savedOrientationNum == lastOrientationNum
+                && previewSize != null){
+            //openCamera(previewTextureView.getWidth(), previewTextureView.getHeight());
+            openCamera(previewSize.getWidth(), previewSize.getHeight());
+            savedOrientationNum = -1;
         }
     }
     @Override
@@ -134,8 +139,10 @@ public class Camera2Activity extends AppCompatActivity {
         displayManager = null;
         displayListener = null;
 
+        if(isInMultiWindowMode()){
+            savedOrientationNum = getWindowManager().getDefaultDisplay().getRotation();
+        }
         stopBackgroundThread();
-        
     }
     @Override
     public void onDestroy(){
@@ -145,13 +152,16 @@ public class Camera2Activity extends AppCompatActivity {
             previewImageReader = null;
         }
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        mediaActionSound.release();
+
+        savedOrientationNum = -1;
     }
-    /*
+
     // MultiwindowModeを開始・終了した場合に呼ばれる.
     @Override
     public void onMultiWindowModeChanged(boolean isInMultiWindowMode) {
         super.onMultiWindowModeChanged(isInMultiWindowMode);
-    }*/
+    }
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
@@ -166,7 +176,7 @@ public class Camera2Activity extends AppCompatActivity {
             return;
         }
         switch (intRequestCode){
-            case REQUEST_PERMISSION_CAMERA:
+            case RequestNumPermissionCamera:
                 if (intGrantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     runOnUiThread(
                         () ->{
@@ -180,7 +190,7 @@ public class Camera2Activity extends AppCompatActivity {
                     finish();
                 }
                 break;
-            case REQUEST_PERMISSION_STORAGE:
+            case RequestNumPermissionStorage:
                 if (intGrantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     // Storageへのアクセスが許可されたら、OnResumeで画像の保存処理実行.
                     isPictureTaken = true;
@@ -199,7 +209,7 @@ public class Camera2Activity extends AppCompatActivity {
             openCamera(previewTextureView.getWidth(), previewTextureView.getHeight());
         }
         else{
-            requestPermissions(new String[]{Manifest.permission.CAMERA}, REQUEST_PERMISSION_CAMERA);
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, RequestNumPermissionCamera);
         }
     }
     @TargetApi(Build.VERSION_CODES.M)
@@ -211,10 +221,14 @@ public class Camera2Activity extends AppCompatActivity {
         }
         else{
             requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE}
-                    , REQUEST_PERMISSION_STORAGE);
+                    , RequestNumPermissionStorage);
         }
     }
     private void initCameraView(){
+        // シャッター音の準備.
+        mediaActionSound = new MediaActionSound();
+        mediaActionSound.load(MediaActionSound.SHUTTER_CLICK);
+
         // プレビュー用のViewを追加.
         previewTextureView = (PreviewTextureView) findViewById(R.id.texture_preview_camera2);
 
@@ -263,9 +277,6 @@ public class Camera2Activity extends AppCompatActivity {
             }
             @Override
             public void onDisplayChanged(int displayId) {
-
-                Log.d("testtesttest", "onDisplayChanged");
-
                 // Displayサイズの取得.
                 Point displaySize = new Point();
                 getWindowManager().getDefaultDisplay().getSize(displaySize);
@@ -340,24 +351,48 @@ public class Camera2Activity extends AppCompatActivity {
                     }
                     , backgroundHandler);
 
-                // Multiwindow用に画面の向きではなくDisplayサイズで縦横確認.
-                Point displaySize = new Point();
-                getWindowManager().getDefaultDisplay().getSize(displaySize);
-
-                if(displaySize.x >= displaySize.y){
-                    previewTextureView.setAspectRatio(maxImageSize.getWidth(), maxImageSize.getHeight());
+                int displayOrientation = getResources().getConfiguration().orientation;
+                if(isInMultiWindowMode()){
+                    switch(displayOrientation){
+                        case Configuration.ORIENTATION_LANDSCAPE:
+                            previewTextureView.setAspectRatio(maxImageSize.getHeight(), maxImageSize.getWidth());
+                            break;
+                        case Configuration.ORIENTATION_PORTRAIT:
+                            previewTextureView.setAspectRatio(maxImageSize.getWidth(), maxImageSize.getHeight());
+                            break;
+                    }
                 }
                 else{
-                    previewTextureView.setAspectRatio(maxImageSize.getHeight(), maxImageSize.getWidth());
+                    switch(displayOrientation){
+                        case Configuration.ORIENTATION_LANDSCAPE:
+                            previewTextureView.setAspectRatio(maxImageSize.getWidth(), maxImageSize.getHeight());
+                            break;
+                        case Configuration.ORIENTATION_PORTRAIT:
+                            previewTextureView.setAspectRatio(maxImageSize.getHeight(), maxImageSize.getWidth());
+                            break;
+                    }
                 }
+
 
                 // 取得したSizeのうち、画面のアスペクト比に合致していてTextureViewMaxWidth・TextureViewMaxHeight以下の最大値をセット.
                 final float aspectRatio = ((float)maxImageSize.getHeight() / (float)maxImageSize.getWidth());
 
+                int maxWidth;
+                int maxHeight;
+
+                if(isInMultiWindowMode()){
+                    maxWidth = width;
+                    maxHeight = height;
+                }
+                else{
+                    maxWidth = TextureViewMaxWidth;
+                    maxHeight = TextureViewMaxHeight;
+                }
+
                 Optional<Size> setSize = Stream.of(sizes)
                         .filter(size ->
-                                size.getWidth() <= TextureViewMaxWidth
-                                        && size.getHeight() <= TextureViewMaxHeight
+                                size.getWidth() <= maxWidth
+                                        && size.getHeight() <= maxHeight
                                         && size.getHeight() == (size.getWidth() * aspectRatio))
                         .max((a, b) -> Integer.compare(a.getWidth(), b.getWidth()));
 
@@ -524,14 +559,10 @@ public class Camera2Activity extends AppCompatActivity {
             previewSession.stopRepeating();
 
             // シャッター音を鳴らす.
-            MediaActionSound mediaActionSound = new MediaActionSound();
-            mediaActionSound.load(MediaActionSound.SHUTTER_CLICK);
             mediaActionSound.play(MediaActionSound.SHUTTER_CLICK);
 
             // 画像の保存.
             previewSession.capture(captureBuilder.build(), null, null);
-
-            mediaActionSound.release();
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
