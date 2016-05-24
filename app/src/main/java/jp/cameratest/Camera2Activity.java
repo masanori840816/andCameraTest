@@ -283,12 +283,12 @@ public class Camera2Activity extends AppCompatActivity {
 
                 configureTransform(displaySize.x, displaySize.y);
 
-                int intNewRotationNum = getWindowManager().getDefaultDisplay().getRotation();
+                int newRotationNum = getWindowManager().getDefaultDisplay().getRotation();
                 // 端末を180度回転させると2回目のconfigureTransformが呼ばれないのでここで実行.
-                if(Math.abs(intNewRotationNum - lastOrientationNum) == 2){
-                    configureTransform(previewSize.getWidth(), previewSize.getHeight());
+                if(Math.abs(newRotationNum - lastOrientationNum) == 2){
+                    configureTransform(previewTextureView.getWidth(), previewTextureView.getHeight());
                     // 180度回転の場合はonResumeが呼ばれないのでここで角度情報を保持.
-                    lastOrientationNum = intNewRotationNum;
+                    lastOrientationNum = newRotationNum;
                 }
             }
             @Override
@@ -351,28 +351,15 @@ public class Camera2Activity extends AppCompatActivity {
                     }
                     , backgroundHandler);
 
-                int displayOrientation = getResources().getConfiguration().orientation;
-                if(isInMultiWindowMode()){
-                    switch(displayOrientation){
-                        case Configuration.ORIENTATION_LANDSCAPE:
-                            previewTextureView.setAspectRatio(maxImageSize.getHeight(), maxImageSize.getWidth());
-                            break;
-                        case Configuration.ORIENTATION_PORTRAIT:
-                            previewTextureView.setAspectRatio(maxImageSize.getWidth(), maxImageSize.getHeight());
-                            break;
-                    }
+                int deviceRotation = getWindowManager().getDefaultDisplay().getRotation();
+
+                if(deviceRotation == Surface.ROTATION_90
+                        || deviceRotation == Surface.ROTATION_270){
+                    previewTextureView.setAspectRatio(maxImageSize.getWidth(), maxImageSize.getHeight());
                 }
                 else{
-                    switch(displayOrientation){
-                        case Configuration.ORIENTATION_LANDSCAPE:
-                            previewTextureView.setAspectRatio(maxImageSize.getWidth(), maxImageSize.getHeight());
-                            break;
-                        case Configuration.ORIENTATION_PORTRAIT:
-                            previewTextureView.setAspectRatio(maxImageSize.getHeight(), maxImageSize.getWidth());
-                            break;
-                    }
+                    previewTextureView.setAspectRatio(maxImageSize.getHeight(), maxImageSize.getWidth());
                 }
-
 
                 // 取得したSizeのうち、画面のアスペクト比に合致していてTextureViewMaxWidth・TextureViewMaxHeight以下の最大値をセット.
                 final float aspectRatio = ((float)maxImageSize.getHeight() / (float)maxImageSize.getWidth());
