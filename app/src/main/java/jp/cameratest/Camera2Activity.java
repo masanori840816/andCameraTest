@@ -4,7 +4,6 @@ import android.Manifest;
 import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.pm.PackageManager;
-import android.content.res.Configuration;
 import android.graphics.ImageFormat;
 import android.graphics.Matrix;
 import android.graphics.Point;
@@ -62,7 +61,6 @@ public class Camera2Activity extends AppCompatActivity {
     private CameraDevice cameraDevice;
     private CaptureRequest.Builder previewBuilder;
     private CameraCaptureSession previewSession;
-    private int intSensorOrientation;
     private ImageReader previewImageReader;
     private DisplayManager displayManager;
     private DisplayManager.DisplayListener displayListener;
@@ -74,15 +72,15 @@ public class Camera2Activity extends AppCompatActivity {
     private Image capturedImage;
     // 端末を180度回転させた場合に、2回目のconfigureTransformを呼ぶのに使う.
     private int lastOrientationNum = -1;
-    private int savedOrientationNum = -1;
+    private int savedOrientationNum;
     private MediaActionSound mediaActionSound;
 
     private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
     static {
-        ORIENTATIONS.append(Surface.ROTATION_0, 90);
-        ORIENTATIONS.append(Surface.ROTATION_90, 0);
-        ORIENTATIONS.append(Surface.ROTATION_180, 270);
-        ORIENTATIONS.append(Surface.ROTATION_270, 180);
+        ORIENTATIONS.append(Surface.ROTATION_0, 270);
+        ORIENTATIONS.append(Surface.ROTATION_90, 180);
+        ORIENTATIONS.append(Surface.ROTATION_180, 90);
+        ORIENTATIONS.append(Surface.ROTATION_270, 0);
     }
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -92,14 +90,46 @@ public class Camera2Activity extends AppCompatActivity {
 
         setContentView(R.layout.activity_camera2);
 
-        initCameraView();
+        // シャッター音の準備.
+        mediaActionSound = new MediaActionSound();
+        mediaActionSound.load(MediaActionSound.SHUTTER_CLICK);
 
-        if(isInMultiWindowMode()){
-            savedOrientationNum = -1;
+        // プレビュー用のViewを追加.
+        previewTextureView = (PreviewTextureView) findViewById(R.id.texture_preview_camera2);
+        previewTextureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
+            @Override
+            public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
+                // Textureが有効化されたらプレビューを表示.
+                // OS6.0以上ならCameraへのアクセス権確認.
+                if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M){
+                    requestCameraPermission();
+                }
+                else{
+                    openCamera(width, height);
+                }
+            }
+            @Override
+            public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
+                configureTransform(width, height);
+            }
+            @Override
+            public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
+                return true;
+            }
+            @Override
+            public void onSurfaceTextureUpdated(SurfaceTexture surface) {
+            }
+        });
+        Button btnTakingPhoto = (Button) findViewById(R.id.btn_taking_photo_camera2);
+        if(btnTakingPhoto != null){
+            btnTakingPhoto.setOnClickListener(
+                    (View v) ->{
+                        takePicture();
+                    }
+            );
         }
-        else if(savedInstanceState != null){
-            savedOrientationNum = savedInstanceState.getInt(getString(R.string.saved_orientation_num));
-        }
+        // 画面回転時などSavedInstanceStateに値が残っていれば取得する.
+        savedOrientationNum = (savedInstanceState == null)? -1: savedInstanceState.getInt(getString(R.string.saved_orientation_num));
     }
     @Override
     public void onResume(){
@@ -116,7 +146,6 @@ public class Camera2Activity extends AppCompatActivity {
 
         if(savedOrientationNum == lastOrientationNum
                 && previewSize != null){
-            //openCamera(previewTextureView.getWidth(), previewTextureView.getHeight());
             openCamera(previewSize.getWidth(), previewSize.getHeight());
             savedOrientationNum = -1;
         }
@@ -145,7 +174,7 @@ public class Camera2Activity extends AppCompatActivity {
         stopBackgroundThread();
     }
     @Override
-    public void onDestroy(){
+    protected void onDestroy(){
         super.onDestroy();
         if(previewImageReader != null){
             previewImageReader.close();
@@ -155,12 +184,6 @@ public class Camera2Activity extends AppCompatActivity {
         mediaActionSound.release();
 
         savedOrientationNum = -1;
-    }
-
-    // MultiwindowModeを開始・終了した場合に呼ばれる.
-    @Override
-    public void onMultiWindowModeChanged(boolean isInMultiWindowMode) {
-        super.onMultiWindowModeChanged(isInMultiWindowMode);
     }
     @Override
     protected void onSaveInstanceState(Bundle outState) {
@@ -184,23 +207,21 @@ public class Camera2Activity extends AppCompatActivity {
                             openCamera(previewTextureView.getWidth(), previewTextureView.getHeight());
                         }
                     );
-                }
-                else{
-                    // 権限付与を拒否されたらMainActivityに戻る.
-                    finish();
+                    return;
                 }
                 break;
             case RequestNumPermissionStorage:
                 if (intGrantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     // Storageへのアクセスが許可されたら、OnResumeで画像の保存処理実行.
                     isPictureTaken = true;
-                }
-                else{
-                    // 権限付与を拒否されたらMainActivityに戻る.
-                    finish();
+                    return;
                 }
                 break;
+            default:
+                return;
         }
+        // 権限付与を拒否されたらMainActivityに戻る.
+        finish();
     }
     @TargetApi(Build.VERSION_CODES.M)
     private void requestCameraPermission(){
@@ -224,50 +245,8 @@ public class Camera2Activity extends AppCompatActivity {
                     , RequestNumPermissionStorage);
         }
     }
-    private void initCameraView(){
-        // シャッター音の準備.
-        mediaActionSound = new MediaActionSound();
-        mediaActionSound.load(MediaActionSound.SHUTTER_CLICK);
-
-        // プレビュー用のViewを追加.
-        previewTextureView = (PreviewTextureView) findViewById(R.id.texture_preview_camera2);
-
-        previewTextureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
-            @Override
-            public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
-                // Textureが有効化されたらプレビューを表示.
-                // OS6.0以上ならCameraへのアクセス権確認.
-                if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M){
-                    requestCameraPermission();
-                }
-                else{
-                    openCamera(width, height);
-                }
-            }
-            @Override
-            public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
-                configureTransform(width, height);
-            }
-            @Override
-            public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
-                return true;
-            }
-            @Override
-            public void onSurfaceTextureUpdated(SurfaceTexture surface) {
-            }
-        });
-        Button btnTakingPhoto = (Button) findViewById(R.id.btn_taking_photo_camera2);
-        if(btnTakingPhoto != null){
-            btnTakingPhoto.setOnClickListener(
-                (View v) ->{
-                    takePicture();
-                }
-            );
-        }
-    }
     private void openCamera(int width, int height) {
-        if(width <= 0
-                || height <= 0){
+        if(width <= 0 || height <= 0){
             return;
         }
         // 画面回転を検出.
@@ -283,12 +262,12 @@ public class Camera2Activity extends AppCompatActivity {
 
                 configureTransform(displaySize.x, displaySize.y);
 
-                int newRotationNum = getWindowManager().getDefaultDisplay().getRotation();
+                int newOrientationNum = getWindowManager().getDefaultDisplay().getRotation();
                 // 端末を180度回転させると2回目のconfigureTransformが呼ばれないのでここで実行.
-                if(Math.abs(newRotationNum - lastOrientationNum) == 2){
+                if(Math.abs(newOrientationNum - lastOrientationNum) == 2){
                     configureTransform(previewTextureView.getWidth(), previewTextureView.getHeight());
                     // 180度回転の場合はonResumeが呼ばれないのでここで角度情報を保持.
-                    lastOrientationNum = newRotationNum;
+                    lastOrientationNum = newOrientationNum;
                 }
             }
             @Override
@@ -311,8 +290,6 @@ public class Camera2Activity extends AppCompatActivity {
                     // Front Cameraならスキップ.
                     continue;
                 }
-                Integer cameraOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
-                intSensorOrientation = (cameraOrientation != null)? cameraOrientation: 0;
 
                 // 端末がFlashlightに対応しているか確認.
                 Boolean isAvailable = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
@@ -351,10 +328,10 @@ public class Camera2Activity extends AppCompatActivity {
                     }
                     , backgroundHandler);
 
-                int deviceRotation = getWindowManager().getDefaultDisplay().getRotation();
+                int displayRotationNum = getWindowManager().getDefaultDisplay().getRotation();
 
-                if(deviceRotation == Surface.ROTATION_90
-                        || deviceRotation == Surface.ROTATION_270){
+                if(displayRotationNum == Surface.ROTATION_90
+                        || displayRotationNum == Surface.ROTATION_270){
                     previewTextureView.setAspectRatio(maxImageSize.getWidth(), maxImageSize.getHeight());
                 }
                 else{
@@ -415,8 +392,8 @@ public class Camera2Activity extends AppCompatActivity {
                             cameraDevice = null;
                         }
                     }, backgroundHandler);
-                }catch (SecurityException s){
-                    s.printStackTrace();
+                }catch (SecurityException e){
+                    e.printStackTrace();
                 }
             }
         } catch (CameraAccessException e) {
@@ -541,12 +518,12 @@ public class Camera2Activity extends AppCompatActivity {
 
             // 画像の回転を調整する.
             captureBuilder.set(CaptureRequest.JPEG_ORIENTATION
-                    , (ORIENTATIONS.get(getWindowManager().getDefaultDisplay().getRotation()) + intSensorOrientation + 270) % 360);
+                    , ORIENTATIONS.get(getWindowManager().getDefaultDisplay().getRotation()));
             // プレビュー画面の更新を一旦ストップ.
             previewSession.stopRepeating();
 
             // シャッター音を鳴らす.
-            mediaActionSound.play(MediaActionSound.SHUTTER_CLICK);
+  //          mediaActionSound.play(MediaActionSound.SHUTTER_CLICK);
 
             // 画像の保存.
             previewSession.capture(captureBuilder.build(), null, null);
@@ -568,9 +545,10 @@ public class Camera2Activity extends AppCompatActivity {
 
                 Matrix matrix = new Matrix();
 
-                int deviceRotation = getWindowManager().getDefaultDisplay().getRotation();
-                if(deviceRotation == Surface.ROTATION_90
-                        || deviceRotation == Surface.ROTATION_270){
+                int displayRotationNum = getWindowManager().getDefaultDisplay().getRotation();
+
+                if(displayRotationNum == Surface.ROTATION_90
+                        || displayRotationNum == Surface.ROTATION_270){
 
                     rctPreview.offset(centerX - rctPreview.centerX(), centerY - rctPreview.centerY());
 
@@ -583,11 +561,11 @@ public class Camera2Activity extends AppCompatActivity {
                     );
                     matrix.postScale(scale, scale, centerX, centerY);
                     // ROTATION_90: 270度回転、ROTATION_270: 90度回転.
-                    matrix.postRotate((90 * (deviceRotation + 2)) % 360, centerX, centerY);
+                    matrix.postRotate((90 * (displayRotationNum + 2)) % 360, centerX, centerY);
                 }
                 else{
                     // ROTATION_0: 0度回転、ROTATION_180: 180度回転.
-                    matrix.postRotate(90 * deviceRotation, centerX, centerY);
+                    matrix.postRotate(90 * displayRotationNum, centerX, centerY);
                 }
                 previewTextureView.setTransform(matrix);
             }
