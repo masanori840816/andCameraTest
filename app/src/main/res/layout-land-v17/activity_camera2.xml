@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<layout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width='match_parent'
-    android:layout_height='match_parent'
     tools:context="jp.cameratest.Camera2Activity">
+<data>
+    <variable name="camera2" type="jp.cameratest.Camera2Activity" />
+</data>
+
+<RelativeLayout
+    android:layout_width='match_parent'
+    android:layout_height='match_parent'>
 
     <jp.cameratest.PreviewTextureView
         android:id='@+id/texture_preview_camera2'
@@ -22,3 +27,4 @@
         android:layout_alignParentRight="true"
         android:layout_alignParentEnd="true" />
 </RelativeLayout>
+</layout>
