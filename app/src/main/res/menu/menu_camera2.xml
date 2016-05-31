@@ -1,6 +1,14 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools" tools:context="jp.cameratest.Camera2Activity">
-    <item android:id="@+id/action_settings" android:title="@string/action_settings"
-        android:orderInCategory="100" app:showAsAction="never" />
+    <item android:id="@+id/action_filter_camera2"
+        android:title="@string/action_filter"
+        android:icon="@mipmap/filter"
+        android:orderInCategory="100"
+        app:showAsAction="always" />
+    <item android:id="@+id/action_settings_camera2"
+        android:title="@string/action_settings"
+        android:icon="@mipmap/ic_settings_white_48dp"
+        android:orderInCategory="100"
+        app:showAsAction="ifRoom" />
 </menu>

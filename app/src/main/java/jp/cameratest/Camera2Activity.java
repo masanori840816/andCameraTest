@@ -28,16 +28,19 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.annotation.NonNull;
+import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.util.Size;
 import android.util.SparseIntArray;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.Button;
 import android.widget.Toast;
 
 import com.annimon.stream.Optional;
@@ -54,7 +57,7 @@ import java.util.Arrays;
 import jp.cameratest.databinding.ActivityCamera2Binding;
 
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-public class Camera2Activity extends AppCompatActivity {
+public class Camera2Activity extends AppCompatActivity implements SelectFilterFragment.OnFragmentInteractionListener {
     private final static int RequestNumPermissionCamera = 1;
     private final static int RequestNumPermissionStorage = 2;
     private final static int TextureViewMaxWidth = 1920;
@@ -130,8 +133,31 @@ public class Camera2Activity extends AppCompatActivity {
                     }
             );
         }
+        setSupportActionBar((Toolbar) binding.toolbarCamera2);
+        // Toolbarのタイトルを非表示にする.
+        ActionBar actionBar = getSupportActionBar();
+        if(actionBar != null){
+            actionBar.setDisplayShowTitleEnabled(false);
+        }
         // 画面回転時などSavedInstanceStateに値が残っていれば取得する.
         savedOrientationNum = (savedInstanceState == null)? -1: savedInstanceState.getInt(getString(R.string.saved_orientation_num));
+    }
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.menu_camera2, menu);
+        return true;
+    }
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()) {
+            case R.id.action_filter_camera2:
+                Log.d("testtest", "menu1 tap.");
+                return true;
+            case R.id.action_settings_camera2:
+                return true;
+            default:
+                return super.onOptionsItemSelected(item);
+        }
     }
     @Override
     public void onResume(){
@@ -186,6 +212,10 @@ public class Camera2Activity extends AppCompatActivity {
         mediaActionSound.release();
 
         savedOrientationNum = -1;
+    }
+    @Override
+    public void onFragmentInteraction(Uri uri){
+
     }
     @Override
     protected void onSaveInstanceState(Bundle outState) {

@@ -12,12 +12,14 @@
 
         <jp.cameratest.PreviewTextureView
             android:id='@+id/texture_preview_camera2'
-            android:layout_width='wrap_content'
-            android:layout_height='wrap_content'
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:layout_alignParentBottom="true"
             android:layout_alignParentStart="true"
             android:layout_alignParentTop="true"
             />
+        <include layout="@layout/toolbar_camera2"
+            android:id="@+id/toolbar_camera2"/>
         <Button
             android:layout_width='wrap_content'
             android:layout_height='wrap_content'
