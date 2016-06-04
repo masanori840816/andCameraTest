@@ -1,16 +1,19 @@
 package jp.cameratest;
 
-import android.content.Context;
-import android.net.Uri;
 import android.os.Bundle;
-import android.support.v4.app.Fragment;
+import android.app.Fragment;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
-public class SelectFilterFragment extends Fragment {
+import jp.cameratest.databinding.FragmentSelectFilterBinding;
 
-    private OnFragmentInteractionListener interactionListener;
+public class SelectFilterFragment extends Fragment {
+    private FragmentSelectFilterBinding binding;
+    protected FilterListAdapter adapter;
+    protected RecyclerView.LayoutManager layoutManager;
 
     public SelectFilterFragment() {
         // Required empty public constructor
@@ -24,29 +27,28 @@ public class SelectFilterFragment extends Fragment {
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
-        // Inflate the layout for this fragment
-        return inflater.inflate(R.layout.fragment_select_filter, container, false);
-    }
+        View rootView = inflater.inflate(R.layout.fragment_select_filter, container, false);
+        binding = FragmentSelectFilterBinding.bind(rootView);
+        layoutManager = new LinearLayoutManager(getActivity());
 
-    @Override
-    public void onAttach(Context context) {
-        super.onAttach(context);
-        if (context instanceof OnFragmentInteractionListener) {
-            interactionListener = (OnFragmentInteractionListener) context;
-        } else {
-            throw new RuntimeException(context.toString()
-                    + " must implement OnFragmentInteractionListener");
+        int scrollPosition = 0;
+
+        // If a layout manager has already been set, get current scroll position.
+        if (binding.recyclerSelectfilter.getLayoutManager() != null) {
+            scrollPosition = ((LinearLayoutManager) binding.recyclerSelectfilter.getLayoutManager())
+                    .findFirstCompletelyVisibleItemPosition();
         }
-    }
 
-    @Override
-    public void onDetach() {
-        super.onDetach();
-        interactionListener = null;
-    }
+        layoutManager = new LinearLayoutManager(getActivity());
 
-    public interface OnFragmentInteractionListener {
-        // TODO: Update argument type and name
-        void onFragmentInteraction(Uri uri);
+        binding.recyclerSelectfilter.setLayoutManager(layoutManager);
+        binding.recyclerSelectfilter.scrollToPosition(scrollPosition);
+
+        adapter = new FilterListAdapter();
+        // Set CustomAdapter as the adapter for RecyclerView.
+        binding.recyclerSelectfilter.setAdapter(adapter);
+
+        // Inflate the layout for this fragment
+        return rootView;
     }
 }

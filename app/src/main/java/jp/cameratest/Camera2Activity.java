@@ -57,11 +57,13 @@ import java.util.Arrays;
 import jp.cameratest.databinding.ActivityCamera2Binding;
 
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-public class Camera2Activity extends AppCompatActivity implements SelectFilterFragment.OnFragmentInteractionListener {
+public class Camera2Activity extends AppCompatActivity {
     private final static int RequestNumPermissionCamera = 1;
     private final static int RequestNumPermissionStorage = 2;
     private final static int TextureViewMaxWidth = 1920;
     private final static int TextureViewMaxHeight = 1080;
+
+    private Presenter presenter;
     private Size previewSize;
     private CameraDevice cameraDevice;
     private CaptureRequest.Builder previewBuilder;
@@ -99,6 +101,8 @@ public class Camera2Activity extends AppCompatActivity implements SelectFilterFr
         // シャッター音の準備.
         mediaActionSound = new MediaActionSound();
         mediaActionSound.load(MediaActionSound.SHUTTER_CLICK);
+
+        presenter = new Presenter(this);
 
         // プレビュー用のViewを追加.
         binding = DataBindingUtil.setContentView(this, R.layout.activity_camera2);
@@ -151,7 +155,9 @@ public class Camera2Activity extends AppCompatActivity implements SelectFilterFr
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
             case R.id.action_filter_camera2:
-                Log.d("testtest", "menu1 tap.");
+                if(presenter != null){
+                    presenter.showFilterSelector(getFragmentManager());
+                }
                 return true;
             case R.id.action_settings_camera2:
                 return true;
@@ -213,10 +219,7 @@ public class Camera2Activity extends AppCompatActivity implements SelectFilterFr
 
         savedOrientationNum = -1;
     }
-    @Override
-    public void onFragmentInteraction(Uri uri){
 
-    }
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);

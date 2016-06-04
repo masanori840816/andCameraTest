@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layout xmlns:android="http://schemas.android.com/apk/res/android">
+    <data>
+        <variable
+            name="filterclass"
+            type="jp.cameratest.FilterListAdapter.FilterClass">
+        </variable>
+    </data>
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+        <TextView
+            android:id="@+id/listitem_view_filter"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="30dp"
+            android:padding="20dp"
+            android:layout_marginBottom="2dp"
+            android:textColor="#FFFFFF"
+            android:background="#3F000000"
+            android:text="@{filterclass.filterName}"/>
+
+    </LinearLayout>
+</layout>

@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    tools:context="jp.cameratest.Camera2Activity">
+    android:id="@+id/fragment_select_filter_container">
     <data>
-        <variable name="camera2" type="jp.cameratest.SelectFilterFragment" />
+        <variable name="selectfilter" type="jp.cameratest.SelectFilterFragment" />
     </data>
     <FrameLayout
         android:layout_width="match_parent"
