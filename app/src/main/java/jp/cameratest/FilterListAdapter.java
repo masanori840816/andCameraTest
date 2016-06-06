@@ -52,6 +52,9 @@ public class FilterListAdapter extends RecyclerView.Adapter<FilterListAdapter.Da
         public DataBindingHolder(View v) {
             super(v);
             dataBinding = DataBindingUtil.bind(v);
+            dataBinding.getRoot().setOnClickListener((view) -> {
+                RxBusProvider.getInstance().send(new SelectFilterEvent(getAdapterPosition()));
+            });
         }
         public ViewDataBinding getBinding() {
             return dataBinding;

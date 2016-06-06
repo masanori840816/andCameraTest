@@ -95,6 +95,7 @@
       <excludeFolder url="file://$MODULE_DIR$/build/intermediates/exploded-aar/com.android.support/recyclerview-v7/24.0.0-beta1/jars" />
       <excludeFolder url="file://$MODULE_DIR$/build/intermediates/exploded-aar/com.android.support/support-v4/24.0.0-beta1/jars" />
       <excludeFolder url="file://$MODULE_DIR$/build/intermediates/exploded-aar/com.android.support/support-vector-drawable/24.0.0-beta1/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/build/intermediates/exploded-aar/io.reactivex/rxandroid/1.2.0/jars" />
       <excludeFolder url="file://$MODULE_DIR$/build/intermediates/incremental" />
       <excludeFolder url="file://$MODULE_DIR$/build/intermediates/incremental-classes" />
       <excludeFolder url="file://$MODULE_DIR$/build/intermediates/incremental-runtime-classes" />
@@ -118,6 +119,8 @@
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="library" exported="" name="juniversalchardet-1.0.3" level="project" />
     <orderEntry type="library" exported="" name="recyclerview-v7-24.0.0-beta1" level="project" />
+    <orderEntry type="library" exported="" name="rxjava-1.1.5" level="project" />
+    <orderEntry type="library" exported="" name="rxandroid-1.2.0" level="project" />
     <orderEntry type="library" exported="" name="compiler-2.1.0" level="project" />
     <orderEntry type="library" exported="" name="appcompat-v7-24.0.0-beta1" level="project" />
     <orderEntry type="library" exported="" name="support-vector-drawable-24.0.0-beta1" level="project" />

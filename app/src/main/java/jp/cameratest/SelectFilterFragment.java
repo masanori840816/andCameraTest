@@ -45,6 +45,7 @@ public class SelectFilterFragment extends Fragment {
         binding.recyclerSelectfilter.scrollToPosition(scrollPosition);
 
         adapter = new FilterListAdapter();
+
         // Set CustomAdapter as the adapter for RecyclerView.
         binding.recyclerSelectfilter.setAdapter(adapter);
 

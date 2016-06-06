@@ -183,6 +183,7 @@ public class Camera2Activity extends AppCompatActivity {
             openCamera(previewSize.getWidth(), previewSize.getHeight());
             savedOrientationNum = -1;
         }
+        presenter.onResume();
     }
     @Override
     public void onPause(){
@@ -206,6 +207,7 @@ public class Camera2Activity extends AppCompatActivity {
             savedOrientationNum = getWindowManager().getDefaultDisplay().getRotation();
         }
         stopBackgroundThread();
+        presenter.onPause();
     }
     @Override
     protected void onDestroy(){
