@@ -11,9 +11,7 @@ import android.view.ViewGroup;
 import jp.cameratest.databinding.FragmentSelectFilterBinding;
 
 public class SelectFilterFragment extends Fragment {
-    private FragmentSelectFilterBinding binding;
     protected FilterListAdapter adapter;
-    protected RecyclerView.LayoutManager layoutManager;
 
     public SelectFilterFragment() {
         // Required empty public constructor
@@ -28,8 +26,7 @@ public class SelectFilterFragment extends Fragment {
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
         View rootView = inflater.inflate(R.layout.fragment_select_filter, container, false);
-        binding = FragmentSelectFilterBinding.bind(rootView);
-        layoutManager = new LinearLayoutManager(getActivity());
+        FragmentSelectFilterBinding binding = FragmentSelectFilterBinding.bind(rootView);
 
         int scrollPosition = 0;
 
@@ -38,10 +35,6 @@ public class SelectFilterFragment extends Fragment {
             scrollPosition = ((LinearLayoutManager) binding.recyclerSelectfilter.getLayoutManager())
                     .findFirstCompletelyVisibleItemPosition();
         }
-
-        layoutManager = new LinearLayoutManager(getActivity());
-
-        binding.recyclerSelectfilter.setLayoutManager(layoutManager);
         binding.recyclerSelectfilter.scrollToPosition(scrollPosition);
 
         adapter = new FilterListAdapter();

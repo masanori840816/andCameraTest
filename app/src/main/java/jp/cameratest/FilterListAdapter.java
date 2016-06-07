@@ -21,6 +21,7 @@ import java.util.ArrayList;
  */
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class FilterListAdapter extends RecyclerView.Adapter<FilterListAdapter.DataBindingHolder>{
+    private final static FilterListAdapter filterListAdapter = new FilterListAdapter();
     private ArrayList<FilterClass> filterClassList;
 
     public class FilterClass extends BaseObservable {
@@ -53,7 +54,7 @@ public class FilterListAdapter extends RecyclerView.Adapter<FilterListAdapter.Da
             super(v);
             dataBinding = DataBindingUtil.bind(v);
             dataBinding.getRoot().setOnClickListener((view) -> {
-                RxBusProvider.getInstance().send(new SelectFilterEvent(getAdapterPosition()));
+                RxBusProvider.getInstance().send(new SelectFilterEvent(filterListAdapter.getFilterNum(getAdapterPosition())));
             });
         }
         public ViewDataBinding getBinding() {
@@ -61,6 +62,7 @@ public class FilterListAdapter extends RecyclerView.Adapter<FilterListAdapter.Da
         }
     }
     public FilterListAdapter() {
+        // Itemの保持するFilter名、CaptureRequestのCONTROL_EFFECT_MODE番号をセット.
         filterClassList = new ArrayList<>();
 
         addFilterItem("DEFAULT", CaptureRequest.CONTROL_EFFECT_MODE_OFF);
@@ -75,7 +77,7 @@ public class FilterListAdapter extends RecyclerView.Adapter<FilterListAdapter.Da
     }
     @Override
     public DataBindingHolder onCreateViewHolder(ViewGroup viewGroup, int viewType) {
-        // Create a new view.
+        // ItemのViewを作成.
         View v = LayoutInflater.from(viewGroup.getContext())
                 .inflate(R.layout.recycler_item_filter, viewGroup, false);
 
@@ -92,7 +94,15 @@ public class FilterListAdapter extends RecyclerView.Adapter<FilterListAdapter.Da
     public int getItemCount() {
         return filterClassList.size();
     }
-    private void addFilterItem(@NonNull String filterName, @NonNull int filterNum){
+    public int getFilterNum(int newFilterNum){
+        // Viewのアイテムがクリックされたら該当のCONTROL_EFFECT_MODEの番号を渡す.
+        if(filterClassList == null){
+            return CaptureRequest.CONTROL_EFFECT_MODE_OFF;
+        }
+        return filterClassList.get(newFilterNum).filterNum;
+    }
+    private void addFilterItem(@NonNull String filterName, int filterNum){
+        // Filter名とCaptureRequestのCONTROL_EFFECT_MODEの番号からClassを作って配列に格納.
         FilterClass newClass = new FilterClass();
         newClass.filterName = filterName;
         newClass.filterNum = filterNum;

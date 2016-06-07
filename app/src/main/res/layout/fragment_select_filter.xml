@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/fragment_select_filter_container">
     <data>
         <variable name="selectfilter" type="jp.cameratest.SelectFilterFragment" />
@@ -14,6 +15,7 @@
             android:layout_height="match_parent"
             android:layout_centerVertical="true"
             android:padding="30dp"
+            app:layoutManager="LinearLayoutManager"
             />
     </FrameLayout>
 </layout>
