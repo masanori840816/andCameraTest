@@ -91,6 +91,8 @@ public class Presenter {
     private boolean isPictureTaken = false;
     private Image capturedImage;
 
+    private int lastFilterNum;
+
     private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
     static {
         ORIENTATIONS.append(Surface.ROTATION_0, 270);
@@ -99,11 +101,13 @@ public class Presenter {
         ORIENTATIONS.append(Surface.ROTATION_270, 0);
     }
 
-    public Presenter(Activity newActivity, ActivityCamera2Binding newBinding, int orientationNum){
+    public Presenter(Activity newActivity, ActivityCamera2Binding newBinding, int orientationNum, int filterNum){
         currentActivity = newActivity;
         binding = newBinding;
 
         savedOrientationNum = orientationNum;
+
+        lastFilterNum = (filterNum < 0)? CaptureRequest.CONTROL_EFFECT_MODE_OFF: filterNum;
         init();
     }
     public void onResume(){
@@ -121,14 +125,16 @@ public class Presenter {
             openCamera(previewSize.getWidth(), previewSize.getHeight());
             savedOrientationNum = -1;
         }
-
+        // RecyclerViewでItemを選択したらCameraにFilterの値をセットする.
         Subscription subscription = RxBusProvider.getInstance()
                 .toObserverable()
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(eventClass -> {
                     if (eventClass instanceof SelectFilterEvent) {
-                        Log.d("testtest", "Position" + ((SelectFilterEvent)eventClass).getCurrentFilterNum());
-                        // イベントが来ました
+                        lastFilterNum = ((SelectFilterEvent) eventClass).getCurrentFilterNum();
+                        createCameraPreviewSession();
+                        // Filter選択用のRecyclerViewを削除する.
+                        currentActivity.getFragmentManager().popBackStack();
                     }
                 });
         compositeSubscription = new CompositeSubscription(subscription);
@@ -195,13 +201,17 @@ public class Presenter {
         // 権限付与を拒否されたらMainActivityに戻る.
         currentActivity.finish();
     }
-    public void showFilterSelector(FragmentManager fragmentManager){
-        FragmentTransaction transaction = fragmentManager.beginTransaction();
+    public void showFilterSelector(){
+        FragmentTransaction transaction = currentActivity.getFragmentManager().beginTransaction();
         transaction.add(R.id.activity_main_container, selectFilterFragment);
+        transaction.addToBackStack(null);
         transaction.commit();
     }
     public int getLastOrientationNum(){
         return lastOrientationNum;
+    }
+    public int getLastFilterNum(){
+        return lastFilterNum;
     }
     private void init(){
         // シャッター音の準備.
@@ -591,7 +601,7 @@ public class Presenter {
     private void setCameraMode(CaptureRequest.Builder requestBuilder){
         // AutoFocus
         requestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-//        requestBuilder.set(CaptureRequest.CONTROL_EFFECT_MODE, CaptureRequest.CONTROL_EFFECT_MODE_MONO);
+        requestBuilder.set(CaptureRequest.CONTROL_EFFECT_MODE, lastFilterNum);
 
         // 端末がFlashlightに対応していたら自動で使用されるように設定.
         if(isFlashlightSupported){

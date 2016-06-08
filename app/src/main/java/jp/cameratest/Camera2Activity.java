@@ -33,9 +33,19 @@ public class Camera2Activity extends AppCompatActivity {
             actionBar.setDisplayShowTitleEnabled(false);
         }
 
+        int savedOrientationNum;
+        int savedFilterNum;
         // 画面回転時などSavedInstanceStateに値が残っていれば取得する.
-        int savedOrientationNum = (savedInstanceState == null)? -1: savedInstanceState.getInt(getString(R.string.saved_orientation_num));
-        presenter = new Presenter(this, binding, savedOrientationNum);
+        if(savedInstanceState == null){
+            savedOrientationNum = -1;
+            savedFilterNum = -1;
+        }
+        else{
+            savedOrientationNum = savedInstanceState.getInt(getString(R.string.saved_orientation_num));
+            savedFilterNum = savedInstanceState.getInt(getString(R.string.saved_filter_num));
+        }
+
+        presenter = new Presenter(this, binding, savedOrientationNum, savedFilterNum);
     }
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -47,7 +57,7 @@ public class Camera2Activity extends AppCompatActivity {
         switch (item.getItemId()) {
             case R.id.action_filter_camera2:
                 if(presenter != null){
-                    presenter.showFilterSelector(getFragmentManager());
+                    presenter.showFilterSelector();
                 }
                 return true;
             case R.id.action_settings_camera2:
@@ -76,6 +86,7 @@ public class Camera2Activity extends AppCompatActivity {
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putInt(getString(R.string.saved_orientation_num), presenter.getLastOrientationNum());
+        outState.putInt(getString(R.string.saved_filter_num), presenter.getLastFilterNum());
     }
     @Override
     public void onRequestPermissionsResult(int intRequestCode

@@ -11,16 +11,6 @@
     <string name="btn_save">SAVE</string>
     <string name="btn_cancel">CANCEL</string>
     <string name="title_activity_camera">CameraActivity</string>
-    <string name='saved_orientation_num'>SavedOrientationNum</string>
-    <!--string-array name="list_filter_name">
-        <item name="list_filter_item_default">DEFAULT</item>
-        <item name="list_filter_item_mono">MONO</item>
-        <item name="list_filter_item_negative">NEGATIVE</item>
-        <item name="list_filter_item_sepia">SEPIA</item>
-        <item name="list_filter_item_aqua">AQUA</item>
-        <item name="list_filter_item_blackboard">BLACKBOARD</item>
-        <item name="list_filter_item_whiteboard">WHITEBOARD</item>
-        <item name="list_filter_item_posterize">POSTERIZE</item>
-        <item name="list_filter_item_solarize">SOLARIZE</item>
-    </string-array-->
+    <string name="saved_orientation_num">SavedOrientationNum</string>
+    <string name="saved_filter_num">SavedFilterNum</string>
 </resources>
